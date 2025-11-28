@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+        xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        targetNamespace="http://www.newzbin.com/DTD/2003/nzb"
+        xmlns="http://www.newzbin.com/DTD/2003/nzb"
+        elementFormDefault="qualified">
+
+    <!-- Root NZB element -->
+    <xs:element name="nzb">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="head" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="meta" minOccurs="0" maxOccurs="unbounded">
+                                <xs:complexType>
+                                    <xs:simpleContent>
+                                        <xs:extension base="xs:string">
+                                            <xs:attribute name="type" type="xs:string" use="required"/>
+                                        </xs:extension>
+                                    </xs:simpleContent>
+                                </xs:complexType>
+                            </xs:element>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+
+                <xs:element name="file" minOccurs="0" maxOccurs="unbounded">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="groups" minOccurs="0">
+                                <xs:complexType>
+                                    <xs:sequence>
+                                        <xs:element name="group" type="xs:string" minOccurs="1" maxOccurs="unbounded"/>
+                                    </xs:sequence>
+                                </xs:complexType>
+                            </xs:element>
+
+                            <xs:element name="segments">
+                                <xs:complexType>
+                                    <xs:sequence>
+                                        <xs:element name="segment" minOccurs="1" maxOccurs="unbounded">
+                                            <xs:complexType>
+                                                <xs:simpleContent>
+                                                    <xs:extension base="xs:string">
+                                                        <xs:attribute name="bytes" type="xs:integer" use="required"/>
+                                                        <xs:attribute name="number" type="xs:integer" use="required"/>
+                                                    </xs:extension>
+                                                </xs:simpleContent>
+                                            </xs:complexType>
+                                        </xs:element>
+                                    </xs:sequence>
+                                </xs:complexType>
+                            </xs:element>
+
+                        </xs:sequence>
+
+                        <xs:attribute name="poster" type="xs:string" use="optional"/>
+                        <xs:attribute name="date" type="xs:long" use="optional"/>
+                        <xs:attribute name="subject" type="xs:string" use="optional"/>
+                    </xs:complexType>
+                </xs:element>
+
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>

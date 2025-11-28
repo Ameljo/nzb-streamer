@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb" xmlns:date="325127">
+		<file poster="hfQFVb325zX127QPmMQRdsWVvD6wSyNfkl1@8ln.cV6" date="1764344648" subject="[01/01] - &quot;Lowcash-Future-SINGLE-WEB-2025-MARiBOR.nfo&quot; yEnc (1/1)">
+        <groups>
+            <group>alt.binaries.boneless</group>
+        </groups>
+        <segments>
+            <segment bytes="4184" number="1">47b6f0850ae7689b214a3adbfadd0d2fabe24a934d3b352132be56c54c8685a5@135253998.6mQ</segment>
+        </segments>
+	</file>
+<file poster="hfQFVb325zX127QtPtj0XlOuVcV@ddvIH1TP.XE3" date="1764345094" subject="[1/3] - &quot;Lowcash-Future-SINGLE-WEB-2025-MARiBOR.par2&quot; yEnc (1/1)">
+		<groups>
+			<group>alt.binaries.sounds.music</group>
+		</groups>
+		<segments>
+			<segment bytes="703" number="1">wLCbWKJcpfDwUmLNk9QnKZZO@hbR29mlNIeNM.wBF</segment>
+		</segments>
+	</file>
+	<file poster="hfQFVb325zX127QiBOTyvShHXRI@f07Rkyne.Wvb" date="1764345094" subject="[2/3] - &quot;Lowcash-Future-SINGLE-WEB-2025-MARiBOR.rar&quot; yEnc (1/17)">
+		<groups>
+			<group>alt.binaries.music.misc</group>
+		</groups>
+		<segments>
+			<segment bytes="738800" number="1">I4vKWYFuETBAKlUXz84vlrQb@TLzh2ZEd1XCI.7JA</segment>
+			<segment bytes="738767" number="2">Z9ayyFm3yC0oLjwzCYIMGmT6@1DBJftDELIuG.zwV</segment>
+			<segment bytes="739038" number="3">58xBk5oHLmJK6qSPqLKuBpgC@8LrxHDnZcGi0.3Kg</segment>
+			<segment bytes="738937" number="4">FQjgPilrw1mTV3kqVrzDBed5@BdBQmavp1W87.IJO</segment>
+			<segment bytes="738760" number="5">bQ5br6HW1EhEsYoNvJ1NzVjU@MPbnez7Ca11e.V8I</segment>
+			<segment bytes="738924" number="6">aEy2dqcsGEunzCdiXGEEy3hi@mycOdJbcqtkZ.SJn</segment>
+			<segment bytes="738809" number="7">ruEzx2Af7YO2kDchjubIkWms@JjSJT9se6b5D.LWZ</segment>
+			<segment bytes="738587" number="8">ZEXmx3dc1gy7hMnsfxAp2xfR@v9C2JpOdR6AX.soF</segment>
+			<segment bytes="738693" number="9">5yIM7GPEo6fZM0oHbLRW9C5I@JNKIK90zPOC8.BoY</segment>
+			<segment bytes="738791" number="10">J2dxuCKrVqaAoYIfOv3jMgOv@pYackhxFJF25.ZRI</segment>
+			<segment bytes="739033" number="11">CMte7AZXy35VX5uDdUFu7GYi@6vAqRkcF0eSO.0AD</segment>
+			<segment bytes="739003" number="12">UcIIQOO3X43JUNPD14S4NdwC@VrOFZQYVyKL2.gzt</segment>
+			<segment bytes="738788" number="13">AM4UAdOQhaVme3suYZKyM2vG@bIW60Rg6q1lO.txf</segment>
+			<segment bytes="739001" number="14">0IcsLIyj5VyqSNknELnvmSft@XiOhldwwGUvZ.CVf</segment>
+			<segment bytes="738658" number="15">eLjbsW4sMcd6eFguAUld9NGD@eszi9jABeVsP.7jL</segment>
+			<segment bytes="738630" number="16">RRsWu7HW0xhSSr0Mp7LSSoGp@iVGcPvrivg4O.hv6</segment>
+			<segment bytes="227219" number="17">c8mLHY8rYgqoWKiP08dAG5ww@w49Ejfn7jFZ0.ySk</segment>
+		</segments>
+	</file>
+	<file poster="hfQFVb325zX127QGUz2z6ASuLq0@JgxpOxg0.jGW" date="1764345096" subject="[3/3] - &quot;Lowcash-Future-SINGLE-WEB-2025-MARiBOR.vol00-01.par2&quot; yEnc (1/8)">
+		<groups>
+			<group>alt.binaries.music.misc</group>
+		</groups>
+		<segments>
+			<segment bytes="739532" number="1">suD9dNVIsqejWzMPhla2reU6@6OAada5cAhw3.ofV</segment>
+			<segment bytes="739631" number="2">VFgmS2aUWfeNQ6eUQPG24MJM@7j1i2Dr5wF2F.QZU</segment>
+			<segment bytes="739690" number="3">jKUnypJfpAHMKrq0RH5mJae5@iSUuh2z9bO1k.M65</segment>
+			<segment bytes="739694" number="4">v3ahYoDDnLHLgUyW1CavOtXI@fr4LtRzPBDyb.ugq</segment>
+			<segment bytes="739697" number="5">Bh3vObSVPr7SPzDaDNJVEoaj@uiqD6bthmrCX.6c6</segment>
+			<segment bytes="739673" number="6">DurjHrw5a7LwKVuqMOUaIvsL@NSFpK39fJmFu.Lki</segment>
+			<segment bytes="739572" number="7">RHp2bSMSuj96QNWxeRaskOHa@Q6uxNKyhuCQQ.agz</segment>
+			<segment bytes="233207" number="8">DRoe7rb0GfeA5qWi2R2vTkRd@YQSYg65yjBou.TSx</segment>
+		</segments>
+	</file>
+</nzb>
