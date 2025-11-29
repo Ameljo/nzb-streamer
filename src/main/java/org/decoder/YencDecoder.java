@@ -5,5 +5,5 @@ import java.io.Reader;
 
 public interface YencDecoder {
 
-    OutputStream decode(Reader reader);
+    byte[] decode(Reader reader) throws Exception;
 }

@@ -2,8 +2,10 @@ package org.example;
 
 import org.apache.commons.net.nntp.ArticleInfo;
 import org.apache.commons.net.nntp.NNTPClient;
+import org.decoder.MultiPartDecoder;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
+import org.service.UsenetDownloadService;
 import org.transformers.NzbToStringTransformer;
 import org.transformers.NzbTransformer;
 
@@ -24,8 +26,10 @@ public class Main {
             NNTPClient client = new NNTPClient();
             client.connect(SERVER, PORT);
             System.out.println(client.authenticate(USERNAME, PASSWORD));
+            UsenetDownloadService service = new UsenetDownloadService(client, "downloads");
             for( Nzb.File file : nzb.getFile()) {
                 downloadFile(file, "downloads", client);
+                service.downloadFile(file);
             }
             client.disconnect();
         } catch (Exception e) {
@@ -76,7 +80,16 @@ public class Main {
             }
 
             try (FileOutputStream fos = new FileOutputStream(outputFile, true)) {
-                byte[] data = downloadArticle(messageId, client);
+//                byte[] data = downloadArticle(messageId, client);
+                Reader reader = client.retrieveArticle(messageId);
+                if (reader == null) {
+                    // Check the last reply code for debugging
+                    System.err.println("Failed to retrieve article. Reply code: " + client.getReplyCode());
+                    System.err.println("Reply string: " + client.getReplyString());
+                    throw new IOException("Article not found: " + messageId);
+                }
+                MultiPartDecoder decoder = new MultiPartDecoder();
+                byte[] data = decoder.decode(reader);
                 fos.write(data);
             }
         }
@@ -94,9 +107,6 @@ public class Main {
     }
 
     public static byte[] downloadArticle(String messageId, NNTPClient client) throws IOException {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-
-
         // Try retrieving with ARTICLE command first (gets headers + body)
         Reader reader = client.retrieveArticle(messageId);
         if (reader == null) {

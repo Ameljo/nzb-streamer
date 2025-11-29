@@ -1,10 +1,8 @@
 package org.decoder;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.Reader;
+import java.io.*;
+import java.util.Objects;
+import java.util.zip.CRC32;
 
 /**
  * Multi-part yEnc decoder implementation.
@@ -21,48 +19,106 @@ public class MultiPartDecoder implements YencDecoder{
     private static final int ESCAPE_CHAR = 0x3D; // '='
     private static final int OFFSET = 42;
     private static final int ESCAPE_OFFSET = 64;
+    private static final int BUFFER_SIZE = 8192;
 
-    @Override
-    public OutputStream decode(Reader reader) {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        try (BufferedReader bufferedReader = new BufferedReader(reader)) {
-            String line;
-            boolean inYencData = false;
-
-            while ((line = bufferedReader.readLine()) != null) {
-                // Check for yEnc header line (=ybegin)
-                if (line.startsWith("=ybegin")) {
-                    inYencData = true;
-                    continue;
-                }
-
-                // Check for yEnc part header (=ypart) - skip it
-                if (line.startsWith("=ypart")) {
-                    continue;
-                }
-
-                // Check for yEnc trailer (=yend)
-                if (line.startsWith("=yend")) {
-                    break;
-                }
-
-                // Skip lines before yEnc data starts
-                if (!inYencData) {
-                    continue;
-                }
-
-                // Decode the line
-                decodeLine(line, outputStream);
-            }
-
-        } catch (IOException e) {
-            throw new RuntimeException("Error decoding yEnc data", e);
+    record YencHeader(String filename, long size, int line, String part, String total) {
+        static YencHeader parse(String line) {
+            // Parse =ybegin line
+            return new YencHeader(
+                    extractValue(line, "name"),
+                    Long.parseLong(extractValue(line, "size")),
+                    Integer.parseInt(extractValue(line, "line")),
+                    extractValue(line, "part"),
+                    extractValue(line, "total")
+            );
         }
-
-        return outputStream;
     }
 
+    record YencPartInfo(long begin, long end, String pcrc32) {
+        static YencPartInfo parse(String line) {
+            return new YencPartInfo(
+                    Long.parseLong(extractValue(line, "begin")),
+                    Long.parseLong(extractValue(line, "end")),
+                    extractValue(line, "pcrc32")
+            );
+        }
+    }
+
+    record YencTrailer(long size, String part, String pcrc32, String crc32) {
+        static YencTrailer parse(String line) {
+            return new YencTrailer(
+                    Long.parseLong(Objects.requireNonNull(extractValue(line, "size"))),
+                    extractValue(line, "part"),
+                    extractValue(line, "pcrc32"),
+                    extractValue(line, "crc32")
+            );
+        }
+    }
+
+    private static String extractValue(String line, String key) {
+        String pattern = key + "=";
+        int start = line.indexOf(pattern);
+        if (start == -1) return null;
+
+        start += pattern.length();
+        int end = line.indexOf(' ', start);
+        if (end == -1) end = line.length();
+
+        return line.substring(start, end);
+    }
+
+
+    @Override
+    public byte[] decode(Reader reader) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        try (BufferedReader bufferedReader = new BufferedReader(reader)) {
+            var crc = new CRC32();
+            YencHeader header = null;
+            YencPartInfo partInfo = null;
+            var inYencData = false;
+
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+                switch (line) {
+                    case String s when s.startsWith("=ybegin") -> {
+                        header = YencHeader.parse(s);
+                        inYencData = true;
+                    }
+                    case String s when s.startsWith("=ypart") -> {
+                        partInfo = YencPartInfo.parse(s);
+                    }
+                    case String s when s.startsWith("=yend") -> {
+                        var trailer = YencTrailer.parse(s);
+                         validatePart(crc.getValue(), trailer, header);
+                        return output.toByteArray();
+                    }
+                    default -> {
+                        if (inYencData) {
+                            output.write(decodeLine(line, crc));
+                        }
+                    }
+                }
+            }
+        }
+
+        return output.toByteArray();
+    }
+
+
+    private void validatePart(long actualCrc, YencTrailer trailer, YencHeader header) {
+        if (trailer.pcrc32() != null) {
+            var actualCrcHex =  String.format("%08x", actualCrc);;
+            if (!actualCrcHex.equalsIgnoreCase(trailer.pcrc32())) {
+                throw new RuntimeException("""
+                    Part %s CRC mismatch:
+                      Expected: %s
+                      Got:      %s
+                    """.formatted(trailer.part(), trailer.pcrc32(), actualCrcHex));
+            }
+        }
+    }
     /**
      * Decodes a single line of yEnc encoded data
      *
@@ -70,7 +126,11 @@ public class MultiPartDecoder implements YencDecoder{
      * @param outputStream the stream to write decoded bytes to
      * @throws IOException if an I/O error occurs
      */
-    private void decodeLine(String line, OutputStream outputStream) throws IOException {
+    private byte[] decodeLine(String line, CRC32 crc) throws IOException {
+        // Remove trailing whitespace (spaces, tabs, CR, LF)
+//        line = line.stripTrailing();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
         boolean escaped = false;
 
         for (int i = 0; i < line.length(); i++) {
@@ -85,15 +145,22 @@ public class MultiPartDecoder implements YencDecoder{
             // Decode the character
             int decoded;
             if (escaped) {
-                // Escaped character: subtract both the escape offset and the base offset
-                decoded = (ch - ESCAPE_OFFSET - OFFSET + 256) % 256;
+                decoded = (ch - ESCAPE_OFFSET - OFFSET) & 0xFF;
                 escaped = false;
             } else {
-                // Normal character: just subtract the base offset
-                decoded = (ch - OFFSET + 256) % 256;
+                decoded = (ch - OFFSET) & 0xFF;
             }
 
-            outputStream.write(decoded);
+            byte decodedByte = (byte) decoded;
+            outputStream.write(decodedByte);
+            crc.update(decodedByte);  // Update CRC
         }
+
+        // Validate no orphaned escape character
+        if (escaped) {
+            throw new RuntimeException("Orphaned escape character at end of line");
+        }
+
+        return outputStream.toByteArray();
     }
 }
