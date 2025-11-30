@@ -13,7 +13,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mainClass>org.example.Main</mainClass>
-        <jetty.version>9.4.58.v20250814</jetty.version>
+        <jetty.version>11.0.20</jetty.version>
         <jackrabbit.version>2.22.2</jackrabbit.version>
     </properties>
     <dependencies>
@@ -38,37 +38,6 @@
             <version>5.10.1</version>
             <scope>test</scope>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>ch.qos.logback</groupId>-->
-<!--            <artifactId>logback-classic</artifactId>-->
-<!--            <version>1.2.11</version>-->
-<!--        </dependency>-->
-        <!-- Jackrabbit dependencies -->
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>jackrabbit-jcr-server</artifactId>
-            <version>${jackrabbit.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>jackrabbit-jcr-commons</artifactId>
-            <version>${jackrabbit.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>jackrabbit-core</artifactId>
-            <version>${jackrabbit.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>javax.jcr</groupId>
-            <artifactId>jcr</artifactId>
-            <version>2.0</version>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.4.14</version>
-        </dependency>
 
         <!-- Embedded Jetty -->
         <dependency>
@@ -81,16 +50,14 @@
             <artifactId>jetty-servlet</artifactId>
             <version>${jetty.version}</version>
         </dependency>
+
+        <!-- Milton WebDAV -->
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
-            <version>2.5</version>
+            <groupId>io.milton</groupId>
+            <artifactId>milton-server-ce</artifactId>
+            <version>4.0.0.1129-Beta</version>
         </dependency>
-        <dependency>
-            <groupId>org.apache.derby</groupId>
-            <artifactId>derby</artifactId>
-            <version>10.17.1.0</version>
-        </dependency>
+
         <!-- https://mvnrepository.com/artifact/org.apache.derby/derbytools -->
         <dependency>
             <groupId>org.apache.derby</groupId>
@@ -98,11 +65,11 @@
             <version>10.17.1.0</version>
         </dependency>
         <!-- Logging -->
-<!--        <dependency>-->
-<!--            <groupId>org.slf4j</groupId>-->
-<!--            <artifactId>slf4j-simple</artifactId>-->
-<!--            <version>2.0.9</version>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.17</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

@@ -1,5 +1,6 @@
 package org.service;
 
+import org.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
 import org.decoder.MultiPartDecoder;
 import org.model.DownloadResult;
@@ -13,6 +14,11 @@ import java.util.concurrent.*;
 public class UsenetAsyncDownloadService {
     private final NNTPClient client;
     private final String outputDirectory;
+
+    private static final String SERVER = "YOUR_USENET_SERVER";
+    private static final int PORT = 119;
+    private static final String USERNAME = "YOUR_USENET_USERNAME";
+    private static final String PASSWORD = "YOUR_USENET_PASSWORD";
 
     public UsenetAsyncDownloadService(NNTPClient client, String outputDirectory) {
         this.client = client;
@@ -89,7 +95,7 @@ public class UsenetAsyncDownloadService {
 
         // Create a new NNTPClient for this thread
         NNTPClient localClient = new NNTPClient();
-        localClient.connect(client.getRemoteAddress().getHostName(), client.getRemotePort());
+        localClient.connect(SERVER, PORT);
         // Authenticate if needed
         localClient.authenticate("YOUR_USENET_USERNAME", "YOUR_USENET_PASSWORD"); // Add your credentials here
         if(!localClient.selectNewsgroup(group)){
@@ -119,6 +125,41 @@ public class UsenetAsyncDownloadService {
         localClient.disconnect();
 
         return new TempSegment(segment.getNumber().intValue(), tempFile);
+    }
+
+    public static byte[] downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, String group) throws IOException {
+        var messageId = NzbUtils.normalizeMessageId(segment.getValue());
+        System.out.printf("  Segment %d/: %s (async)%n", segment.getNumber(), messageId);
+
+        // Create a new NNTPClient for this thread
+        NNTPClient localClient = new NNTPClient();
+        localClient.connect(SERVER, PORT);
+        // Authenticate if needed
+        localClient.authenticate("YOUR_USENET_USERNAME", "YOUR_USENET_PASSWORD"); // Add your credentials here
+        if(!localClient.selectNewsgroup(group)){
+            System.err.println(localClient.getReplyString());
+            throw new IOException("Failed to select group: " + group);
+        }
+
+        Reader reader = localClient.retrieveArticle(messageId);
+        if (reader == null) {
+            throw new IOException("Article not found: " + messageId +
+                    " (Reply: " + localClient.getReplyCode() + " - " + localClient.getReplyString() + ")");
+        }
+
+        MultiPartDecoder decoder = new MultiPartDecoder();
+        byte[] decoded = decoder.decode(reader);
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try  {
+            bos.write(decoded);
+        } finally {
+            bos.close();
+        }
+
+        localClient.disconnect();
+
+        return bos.toByteArray();
     }
 
 

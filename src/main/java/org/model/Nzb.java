@@ -235,6 +235,14 @@ public class Nzb {
         @XmlAttribute(name = "subject")
         protected String subject;
 
+        public long getTotalBytes() {
+            long total = 0;
+            for (Nzb.File.Segments.Segment segment : getSegments().getSegment()) {
+                total += segment.getBytes().longValue();
+            }
+            return total;
+        }
+
         /**
          * Gets the value of the groups property.
          * 
