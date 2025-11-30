@@ -1,0 +1,48 @@
+----------------------------------------------------------------
+Sun Nov 30 02:30:02 CET 2025:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.17.1.0 - (1913217): instance a816c00e-019a-d261-986c-00000e800000 
+on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\version\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 
+Loaded from file:/C:/Users/amelj/.m2/repository/org/apache/derby/derby/10.17.1.0/derby-10.17.1.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=21.0.2+13-58
+user.dir=C:\Users\amelj\Code\nzb-parser
+os.name=Windows 11
+os.arch=amd64
+os.version=10.0
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''
+----------------------------------------------------------------
+Sun Nov 30 02:30:03 CET 2025:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.17.1.0 - (1913217): instance 888c4022-019a-d261-986c-00000e800000 
+on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\workspaces\default\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 
+Loaded from file:/C:/Users/amelj/.m2/repository/org/apache/derby/derby/10.17.1.0/derby-10.17.1.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=21.0.2+13-58
+user.dir=C:\Users\amelj\Code\nzb-parser
+os.name=Windows 11
+os.arch=amd64
+os.version=10.0
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''
+----------------------------------------------------------------
+Sun Nov 30 02:30:03 CET 2025:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.17.1.0 - (1913217): instance 6965c036-019a-d261-986c-00000e800000 
+on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\workspaces\security\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 
+Loaded from file:/C:/Users/amelj/.m2/repository/org/apache/derby/derby/10.17.1.0/derby-10.17.1.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=21.0.2+13-58
+user.dir=C:\Users\amelj\Code\nzb-parser
+os.name=Windows 11
+os.arch=amd64
+os.version=10.0
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''
+----------------------------------------------------------------
+Sun Nov 30 02:30:03 CET 2025:
+Shutting down instance 888c4022-019a-d261-986c-00000e800000 on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\workspaces\default\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 
+----------------------------------------------------------------
+Sun Nov 30 02:30:03 CET 2025:
+Shutting down instance 6965c036-019a-d261-986c-00000e800000 on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\workspaces\security\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 
+----------------------------------------------------------------
+Sun Nov 30 02:30:03 CET 2025:
+Shutting down instance a816c00e-019a-d261-986c-00000e800000 on database directory C:\Users\amelj\Code\nzb-parser\jackrabbit\version\db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@76ed5528 

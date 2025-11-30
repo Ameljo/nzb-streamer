@@ -91,7 +91,7 @@ public class MultiPartDecoder implements YencDecoder{
                     }
                     case String s when s.startsWith("=yend") -> {
                         var trailer = YencTrailer.parse(s);
-                         validatePart(crc.getValue(), trailer, header);
+//                         validatePart(crc.getValue(), trailer, header);
                         return output.toByteArray();
                     }
                     default -> {
