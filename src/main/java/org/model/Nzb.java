@@ -235,8 +235,8 @@ public class Nzb {
         @XmlAttribute(name = "subject")
         protected String subject;
 
-        public long getTotalBytes() {
-            long total = 0;
+        public Long getTotalBytes() {
+            Long total = 0L;
             for (Nzb.File.Segments.Segment segment : getSegments().getSegment()) {
                 total += segment.getBytes().longValue();
             }

@@ -1,20 +1,22 @@
 package org.example.webdav;
 
-import io.milton.http.Auth;
-import io.milton.http.LockInfo;
-import io.milton.http.LockResult;
-import io.milton.http.LockTimeout;
-import io.milton.http.LockToken;
+import io.milton.http.*;
 import io.milton.http.webdav.PropPatchHandler.Fields;
 import io.milton.resource.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 
 public abstract class TResource extends AbstractResource implements GetableResource, PropFindableResource, DeletableResource, MoveableResource,
         CopyableResource, DigestResource, LockableResource {
 
-    private static org.apache.log4j.Logger log = org.apache.log4j.Logger.getLogger(TResource.class);
+    private static Logger log = LogManager.getLogger(TResource.class);
     private LockToken currentLock;
 
     public TResource(TFolderResource parent, String name) {
@@ -86,8 +88,7 @@ public abstract class TResource extends AbstractResource implements GetableResou
     }
 
     public int compareTo(Resource o) {
-        if (o instanceof TResource) {
-            TResource res = (TResource) o;
+        if (o instanceof TResource res) {
             return this.getName().compareTo(res.getName());
         } else {
             return -1;
@@ -112,7 +113,7 @@ public abstract class TResource extends AbstractResource implements GetableResou
 
     @Override
     public final LockResult lock(LockTimeout lockTimeout, LockInfo lockInfo) {
-        log.trace("Lock : " + lockTimeout + " info : " + lockInfo + " on resource : " + getName() + " in : " + parent);
+        log.trace("Lock : {} info : {} on resource : {} in : {}", lockTimeout, lockInfo, getName(), parent);
         LockToken token = new LockToken();
         token.info = lockInfo;
         token.timeout = LockTimeout.parseTimeout("30");
@@ -123,7 +124,7 @@ public abstract class TResource extends AbstractResource implements GetableResou
 
     @Override
     public final LockResult refreshLock(String tokenId, LockTimeout timeout) {
-        log.trace("RefreshLock : " + tokenId + " on resource : " + getName() + " in : " + parent);
+        log.trace("RefreshLock : {} on resource : {} in : {}", tokenId, getName(), parent);
         //throw new UnsupportedOperationException("Not supported yet.");
         LockToken token = new LockToken();
         token.info = null;
@@ -135,7 +136,7 @@ public abstract class TResource extends AbstractResource implements GetableResou
 
     @Override
     public void unlock(String arg0) {
-        log.trace("UnLock : " + arg0 + " on resource : " + getName() + " in : " + parent);
+        log.trace("UnLock : {} on resource : {} in : {}", arg0, getName(), parent);
         currentLock = null;
         //throw new UnsupportedOperationException("Not supported yet.");
     }

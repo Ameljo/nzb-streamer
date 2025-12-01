@@ -127,24 +127,20 @@ public class UsenetAsyncDownloadService {
         return new TempSegment(segment.getNumber().intValue(), tempFile);
     }
 
-    public static byte[] downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, String group) throws IOException {
+    public byte[] downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, String group) throws IOException {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
         System.out.printf("  Segment %d/: %s (async)%n", segment.getNumber(), messageId);
 
-        // Create a new NNTPClient for this thread
-        NNTPClient localClient = new NNTPClient();
-        localClient.connect(SERVER, PORT);
-        // Authenticate if needed
-        localClient.authenticate("YOUR_USENET_USERNAME", "YOUR_USENET_PASSWORD"); // Add your credentials here
-        if(!localClient.selectNewsgroup(group)){
-            System.err.println(localClient.getReplyString());
+ // Add your credentials here
+        if(!client.selectNewsgroup(group)){
+            System.err.println(client.getReplyString());
             throw new IOException("Failed to select group: " + group);
         }
 
-        Reader reader = localClient.retrieveArticle(messageId);
+        Reader reader = client.retrieveArticle(messageId);
         if (reader == null) {
             throw new IOException("Article not found: " + messageId +
-                    " (Reply: " + localClient.getReplyCode() + " - " + localClient.getReplyString() + ")");
+                    " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
         }
 
         MultiPartDecoder decoder = new MultiPartDecoder();
@@ -157,7 +153,7 @@ public class UsenetAsyncDownloadService {
             bos.close();
         }
 
-        localClient.disconnect();
+//        client.disconnect();
 
         return bos.toByteArray();
     }

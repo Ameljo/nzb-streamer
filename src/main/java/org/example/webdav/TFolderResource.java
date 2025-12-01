@@ -3,8 +3,6 @@ package org.example.webdav;
 import io.milton.common.StreamUtils;
 import io.milton.http.Range;
 import io.milton.http.Request;
-import io.milton.http.exceptions.BadRequestException;
-import io.milton.http.exceptions.NotAuthorizedException;
 import io.milton.resource.CollectionResource;
 import io.milton.resource.MakeCollectionableResource;
 import io.milton.resource.PutableResource;
@@ -14,15 +12,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class TFolderResource extends TResource implements PutableResource, MakeCollectionableResource {
 
-    private static org.apache.log4j.Logger log = org.apache.log4j.Logger.getLogger(TResource.class);
+    private static Logger log = LogManager.getLogger(TResource.class);
     ArrayList<Resource> children = new ArrayList<Resource>();
 
     public TFolderResource(TFolderResource parent, String name) {
@@ -42,7 +41,16 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
 
     @Override
     public Long getContentLength() {
-        return null;
+        long size = 0L;
+        for (Resource r : children) {
+            if (r instanceof TResource) {
+                Long l = ((TResource) r).getContentLength();
+                if (l != null) {
+                    size += l;
+                }
+            }
+        }
+        return size;
     }
 
     public String getContentType() {
@@ -76,6 +84,7 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
     public Resource createNew(String newName, InputStream inputStream, Long length, String contentType) throws IOException {
         log.debug("createNew: " + " name: " + newName + " current child count: " + this.children.size());
         VirtualWebDavFile r = new VirtualWebDavFile((OnDemandNzbInputStream) inputStream, this);
+        r.createdDate = new java.util.Date();
         log.debug("new child count: " + this.children.size());
         return r;
     }
@@ -91,7 +100,7 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
     }
 
     @Override
-    public void sendContent(OutputStream out, Range range, Map<String, String> params, String contentType) throws IOException, NotAuthorizedException, BadRequestException {
+    public void sendContent(OutputStream out, Range range, Map<String, String> params, String contentType) {
         PrintWriter pw = new PrintWriter(out);
         pw.print("<html><body>");
         pw.print("<h1>" + this.getName() + "</h1>");

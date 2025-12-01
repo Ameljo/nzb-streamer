@@ -3,7 +3,7 @@ package org.example.webdav;
 import org.model.Nzb;
 
 public class VirtualFile {
-    private final long size;
+    private final Long size;
     private final String filename;
     private final Nzb.File nzbFile;
 

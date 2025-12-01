@@ -1,13 +1,19 @@
 package org.example.webdav;
 
 import io.milton.http.Auth;
+import io.milton.http.Range;
 import io.milton.http.Request;
 import io.milton.http.http11.auth.DigestGenerator;
 import io.milton.http.http11.auth.DigestResponse;
 import io.milton.resource.DigestResource;
 import io.milton.resource.Resource;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -17,12 +23,13 @@ import java.util.UUID;
  */
 public class AbstractResource implements Resource, DigestResource {
 
-    private static org.apache.log4j.Logger log = org.apache.log4j.Logger.getLogger(AbstractResource.class);
+    private static Logger log = LogManager.getLogger(AbstractResource.class);
     protected UUID id;
     protected String name;
     protected Date modDate;
     protected Date createdDate;
     protected TFolderResource parent;
+
 
     public AbstractResource(TFolderResource parent, String name) {
         id = UUID.randomUUID();
@@ -39,17 +46,18 @@ public class AbstractResource implements Resource, DigestResource {
 
     @Override
     public Object authenticate(String user, String requestedPassword) {
-        String p = VirtualWebDavFactory.credentialsMap.get(user);
-        if (p != null) {
-            if (p.equals(requestedPassword)) {
-                return Boolean.TRUE;
-            } else {
-                log.warn("that password is incorrect. Try:" + p);
-            }
-        } else {
-            log.warn("user not found: " + user + " - try 'userA'");
-        }
-        return null;
+        return "authenticated";
+//        String p = VirtualWebDavFactory.credentialsMap.get(user);
+//        if (p != null) {
+//            if (p.equals(requestedPassword)) {
+//                return Boolean.TRUE;
+//            } else {
+//                log.warn("that password is incorrect. Try:" + p);
+//            }
+//        } else {
+//            log.warn("user not found: " + user + " - try 'userA'");
+//        }
+//        return null;
 
     }
 
@@ -89,6 +97,10 @@ public class AbstractResource implements Resource, DigestResource {
     @Override
     public boolean authorise(Request request, Request.Method method, Auth auth) {
         log.debug("authorise");
+        if (getName().matches(".*\\.(mkv|mp4|avi|mov)$")) {
+            log.debug("Allowing anonymous access for media file: " + getName());
+            return true;
+        }
         return auth != null;
     }
 

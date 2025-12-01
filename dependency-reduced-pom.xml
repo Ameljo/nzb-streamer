@@ -7,26 +7,6 @@
   <build>
     <plugins>
       <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>jaxb2-maven-plugin</artifactId>
-        <version>3.1.0</version>
-        <executions>
-          <execution>
-            <id>xjc</id>
-            <goals>
-              <goal>xjc</goal>
-            </goals>
-          </execution>
-        </executions>
-        <configuration>
-          <sources>
-            <source>src/main/resources/nzb.xsd</source>
-          </sources>
-          <outputDirectory>${basedir}/src/main/java</outputDirectory>
-          <clearOutputDir>false</clearOutputDir>
-        </configuration>
-      </plugin>
-      <plugin>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.1</version>
         <executions>
@@ -69,11 +49,21 @@
       </exclusions>
     </dependency>
   </dependencies>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>2.0.17</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
   <properties>
+    <log4j2.version>2.25.2</log4j2.version>
     <mainClass>org.example.Main</mainClass>
     <jackrabbit.version>2.22.2</jackrabbit.version>
     <maven.compiler.source>21</maven.compiler.source>
-    <jetty.version>9.4.58.v20250814</jetty.version>
+    <jetty.version>12.1.4</jetty.version>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
