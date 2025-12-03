@@ -140,16 +140,15 @@ public class VirtualWebDavFile extends TResource implements FileResource {
         }
 
         long bytesToWrite = end - start + 1;
+        //TODO support seeking and ranges properly
         try (OnDemandNzbInputStream nzbStream = new OnDemandNzbInputStream(vf)) {
             if (start > 0) nzbStream.skip(start);
-            byte[] buffer = new byte[65536];
-            long remaining = bytesToWrite;
-            while (remaining > 0) {
-                int toRead = (int) Math.min(buffer.length, remaining);
-                int read = nzbStream.read(buffer, 0, toRead);
-                if (read == -1) break;
+            int bufferLength = 65536;
+            byte[] buffer = new byte[bufferLength];
+            int read;
+            while ((read = nzbStream.read(buffer, 0, bufferLength)) != -1) {
+                log.debug("sendContent: read " + read + " bytes");
                 out.write(buffer, 0, read);
-                remaining -= read;
             }
         }
     }
