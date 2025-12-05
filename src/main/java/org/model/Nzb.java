@@ -11,13 +11,8 @@ package org.model;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
-import jakarta.xml.bind.annotation.XmlElement;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlType;
-import jakarta.xml.bind.annotation.XmlValue;
+
+import jakarta.xml.bind.annotation.*;
 
 
 /**
@@ -235,12 +230,39 @@ public class Nzb {
         @XmlAttribute(name = "subject")
         protected String subject;
 
+        @XmlTransient
+        private long size;
+
+        public long getSize() {
+            return size;
+        }
+
+        public void setSize(long size) {
+            this.size = size;
+        }
+
         public Long getTotalBytes() {
             Long total = 0L;
             for (Nzb.File.Segments.Segment segment : getSegments().getSegment()) {
                 total += segment.getBytes().longValue();
             }
             return total;
+        }
+
+        public int getSegmentAtPosition(long position) {
+            long accumulated = 0L;
+            List<Nzb.File.Segments.Segment> segmentList = getSegments().getSegment();
+            for (int i = 0; i < segmentList.size(); i++) {
+                accumulated += segmentList.get(i).getSize();
+                if (position < accumulated) {
+                    return i;
+                }
+            }
+            return segmentList.size() - 1; // Return last segment if position exceeds total
+        }
+
+        public long getSegmentSize(int segmentIndex) {
+            return segments.getSegment().get(segmentIndex).getSize();
         }
 
         /**
@@ -521,6 +543,26 @@ public class Nzb {
                 protected BigInteger bytes;
                 @XmlAttribute(name = "number", required = true)
                 protected BigInteger number;
+                @XmlTransient
+                private long size;
+                @XmlTransient
+                private long startPosition; // Position of the segment in the decoded file
+
+                public long getSize() {
+                    return size;
+                }
+
+                public void setSize(long size) {
+                    this.size = size;
+                }
+
+                public long getStartPosition() {
+                    return startPosition;
+                }
+
+                public void setStartPosition(long startPosition) {
+                    this.startPosition = startPosition;
+                }
 
                 /**
                  * Gets the value of the value property.

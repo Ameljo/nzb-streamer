@@ -22,7 +22,7 @@ public class MultiPartDecoder implements YencDecoder{
     private static final int BUFFER_SIZE = 8192;
 
 
-    record YencHeader(String filename, long size, int line, String part, String total) {
+    public record YencHeader(String filename, long size, int line, String part, String total) {
         static YencHeader parse(String line) {
             // Parse =ybegin line
             return new YencHeader(
@@ -35,7 +35,7 @@ public class MultiPartDecoder implements YencDecoder{
         }
     }
 
-    record YencPartInfo(long begin, long end, String pcrc32) {
+    public record YencPartInfo(long begin, long end, String pcrc32) {
         static YencPartInfo parse(String line) {
             return new YencPartInfo(
                     Long.parseLong(extractValue(line, "begin")),
@@ -69,6 +69,7 @@ public class MultiPartDecoder implements YencDecoder{
     }
 
 
+
     @Override
     public byte[] decode(Reader reader) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -91,7 +92,7 @@ public class MultiPartDecoder implements YencDecoder{
                     }
                     case String s when s.startsWith("=yend") -> {
                         var trailer = YencTrailer.parse(s);
-//                         validatePart(crc.getValue(), trailer, header);
+                         validatePart(crc.getValue(), trailer, header);
                         return output.toByteArray();
                     }
                     default -> {
@@ -104,6 +105,38 @@ public class MultiPartDecoder implements YencDecoder{
         }
 
         return output.toByteArray();
+    }
+
+    @Override
+    public YencPartInfo parseYencPartInfo(Reader reader) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        try (BufferedReader bufferedReader = new BufferedReader(reader)) {
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+                if(line.startsWith("=ypart")) {
+                    return YencPartInfo.parse(line);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public YencHeader parseYencHeader(Reader reader) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        try (BufferedReader bufferedReader = new BufferedReader(reader)) {
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+                if(line.startsWith("=ybegin")) {
+                    return YencHeader.parse(line);
+                }
+            }
+        }
+
+        return null;
     }
 
 

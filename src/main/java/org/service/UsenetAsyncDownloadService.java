@@ -129,7 +129,7 @@ public class UsenetAsyncDownloadService {
 
     public byte[] downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, String group) throws IOException {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
-        System.out.printf("  Segment %d/: %s (async)%n", segment.getNumber(), messageId);
+//        System.out.printf("  Segment %d/: %s (async)%n", segment.getNumber(), messageId);
 
  // Add your credentials here
         if(!client.selectNewsgroup(group)){
@@ -145,6 +145,7 @@ public class UsenetAsyncDownloadService {
 
         MultiPartDecoder decoder = new MultiPartDecoder();
         byte[] decoded = decoder.decode(reader);
+        System.out.println("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
 
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try  {
@@ -153,7 +154,7 @@ public class UsenetAsyncDownloadService {
             bos.close();
         }
 
-//        client.disconnect();
+        System.out.println("Downloaded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
 
         return bos.toByteArray();
     }

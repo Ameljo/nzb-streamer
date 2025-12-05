@@ -6,6 +6,8 @@ import org.model.DownloadResult;
 import org.model.Nzb;
 
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class UsenetDownloadService {
@@ -48,6 +50,36 @@ public class UsenetDownloadService {
         }
 
         return DownloadResult.success(fileName, outputFile);
+    }
+
+    public void populateNzbFileSizes(Nzb.File file) throws Exception {
+        var messageId = normalizeMessageId(file.getSegments().getSegment().getFirst().getValue());
+        client.selectNewsgroup(file.getGroups().getGroup().getFirst());
+        var reader = client.retrieveArticle(messageId);
+        if (reader == null) {
+            throw new IOException("Article not found: " + messageId +
+                    " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
+        }
+        MultiPartDecoder decoder = new MultiPartDecoder();
+        MultiPartDecoder.YencHeader header = decoder.parseYencHeader(reader);
+        file.setSize(header.size());
+        reader.close();
+        reader = client.retrieveArticle(normalizeMessageId(file.getSegments().getSegment().getFirst().getValue()));
+        MultiPartDecoder.YencPartInfo partInfo = decoder.parseYencPartInfo(reader);
+        long position = 0;
+        for (int i = 0; i < file.getSegments().getSegment().size() - 1; i++) {
+            Nzb.File.Segments.Segment segment = file.getSegments().getSegment().get(i);
+            segment.setSize(partInfo.end());
+            segment.setStartPosition(position);
+            position += partInfo.end();
+        }
+
+        reader = client.retrieveArticle(normalizeMessageId(file.getSegments().getSegment().getLast().getValue()));
+        partInfo = decoder.parseYencPartInfo(reader);
+        long lastSegmentSize = partInfo.end() - partInfo.begin() + 1;
+        file.getSegments().getSegment().getLast().setSize(lastSegmentSize);
+        file.getSegments().getSegment().getLast().setStartPosition(position);
+
     }
 
     private byte[] downloadSegment(Nzb.File.Segments.Segment segment, int totalSegments) throws IOException {
