@@ -1,4 +1,4 @@
-package org.example.webdav;
+package org.webdav;
 
 import io.milton.http.*;
 import io.milton.http.webdav.PropPatchHandler.Fields;
@@ -6,11 +6,8 @@ import io.milton.resource.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.Date;
-import java.util.Map;
 import java.util.UUID;
 
 public abstract class TResource extends AbstractResource implements GetableResource, PropFindableResource, DeletableResource, MoveableResource,

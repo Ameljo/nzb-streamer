@@ -2,8 +2,7 @@ package org.workers;
 
 import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.Logger;
-import org.example.webdav.VirtualFile;
-import org.model.Nzb;
+import org.webdav.VirtualFile;
 import org.service.UsenetAsyncDownloadService;
 
 import java.io.IOException;
@@ -27,6 +26,7 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
     private final AtomicBoolean endOfSegments;
     private final AtomicBoolean running;
     private final UsenetAsyncDownloadService downloadService;
+    private NNTPClient nntpClient;
 
     public DownloadSegmentsWorker(AtomicInteger segmentIndex, VirtualFile file, BlockingQueue<byte[]> bufferQueue, AtomicBoolean endOfSegments, AtomicBoolean running) {
         this.segmentIndex = segmentIndex;
@@ -35,7 +35,6 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
         this.endOfSegments = endOfSegments;
         this.running = running;
 
-        NNTPClient nntpClient = null;
         try {
             nntpClient = initNntpClient();
         } catch (IOException e) {
@@ -71,6 +70,12 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
         }
         endOfSegments.set(true);
         running.set(false);
+        try {
+            nntpClient.logout();
+            nntpClient.disconnect();
+        } catch (IOException e) {
+            log.error("Error disconnecting from NNTP server", e);
+        }
         log.debug("Thread finished downloading segments. Total bytes downloaded: {}", bytesDownloaded);
         return true;
     }

@@ -1,10 +1,14 @@
 package org.parser;
 
+import org.NzbUtils;
+import org.example.NNTPClientFactory;
 import org.model.Nzb;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
 import jakarta.xml.bind.Unmarshaller;
 import org.exceptions.NzbParseException;
+import org.model.NzbFile;
+import org.service.UsenetDownloadService;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -30,7 +34,16 @@ public class JaxbNzbParser implements NzbParser{
             Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
             XMLReader reader = createSecureXmlReader();
             SAXSource source = new SAXSource(reader, new InputSource(input));
-            return (Nzb) unmarshaller.unmarshal(source);
+            Nzb nzb = (Nzb) unmarshaller.unmarshal(source);
+            UsenetDownloadService downloadService = new UsenetDownloadService(NNTPClientFactory.getAuthenticatedClient(), "downloads");
+            for (NzbFile file: nzb.getFiles()) {
+                if (NzbUtils.sanitizeFileName(file.getSubject()).contains(".nfo")) {
+                    continue;
+                }
+                downloadService.populateNzbFileSizes(file);
+            }
+
+            return nzb;
         } catch (Exception e) {
             throw new NzbParseException("Failed to parse NZB file", e);
         }

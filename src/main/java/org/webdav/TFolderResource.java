@@ -1,4 +1,4 @@
-package org.example.webdav;
+package org.webdav;
 
 import io.milton.common.StreamUtils;
 import io.milton.http.Range;

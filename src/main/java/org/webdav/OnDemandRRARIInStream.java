@@ -1,4 +1,4 @@
-package org.example.webdav;
+package org.webdav;
 
 import net.sf.sevenzipjbinding.IInStream;
 import net.sf.sevenzipjbinding.SevenZipException;

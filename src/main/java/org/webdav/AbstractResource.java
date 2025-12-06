@@ -1,7 +1,6 @@
-package org.example.webdav;
+package org.webdav;
 
 import io.milton.http.Auth;
-import io.milton.http.Range;
 import io.milton.http.Request;
 import io.milton.http.http11.auth.DigestGenerator;
 import io.milton.http.http11.auth.DigestResponse;
@@ -10,10 +9,7 @@ import io.milton.resource.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.OutputStream;
-import java.lang.reflect.Method;
 import java.util.Date;
-import java.util.Map;
 import java.util.UUID;
 
 /**

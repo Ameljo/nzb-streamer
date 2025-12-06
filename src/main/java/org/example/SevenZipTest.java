@@ -1,16 +1,13 @@
 package org.example;
 
 import net.sf.sevenzipjbinding.*;
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream;
 import net.sf.sevenzipjbinding.simple.ISimpleInArchive;
 import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem;
 import org.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
-import org.decoder.MultiPartDecoder;
-import org.example.webdav.OnDemandNzbInputStream;
-import org.example.webdav.OnDemandRRARIInStream;
-import org.example.webdav.VirtualFile;
-import org.exceptions.NzbParseException;
+import org.webdav.OnDemandNzbInputStream;
+import org.webdav.OnDemandRRARIInStream;
+import org.webdav.VirtualFile;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
 import org.service.UsenetDownloadService;
@@ -36,12 +33,11 @@ public class SevenZipTest {
         UsenetDownloadService downloadService = new UsenetDownloadService(client, "downloads");
 
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample4.nzb"));
-        downloadService.populateNzbFileSizes(nzb.getFile().get(2));
-        VirtualFile vf = new VirtualFile(nzb.getFile().get(2).getSize(), NzbUtils.sanitizeFileName(nzb.getFile().get(2).getSubject()), nzb.getFile().get(2));
+        downloadService.populateNzbFileSizes(nzb.getFile(2));
+        VirtualFile vf = new VirtualFile(nzb.getFile(2).getSize(), NzbUtils.sanitizeFileName(nzb.getFile(2).getSubject()), nzb.getFile(2));
         OnDemandNzbInputStream ods = new OnDemandNzbInputStream(vf);
+
         OnDemandRRARIInStream rrarIInStream = new OnDemandRRARIInStream(ods);
-        RandomAccessFile rarFile = new RandomAccessFile("downloads/Lowcash-Future-SINGLE-WEB-2025-MARiBOR.rar", "r");
-        RandomAccessFileInStream rarIInStream = new RandomAccessFileInStream(rarFile);
 
         try {
             inArchive = SevenZip.openInArchive(null, rrarIInStream);

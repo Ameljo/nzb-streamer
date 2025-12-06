@@ -3,12 +3,10 @@ package org.service;
 import org.apache.commons.net.nntp.NNTPClient;
 import org.decoder.MultiPartDecoder;
 import org.model.DownloadResult;
-import org.model.Nzb;
+import org.model.NzbFile;
+import org.model.Segment;
 
 import java.io.*;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 public class UsenetDownloadService {
     private final NNTPClient client;
@@ -19,9 +17,9 @@ public class UsenetDownloadService {
         this.outputDirectory = outputDirectory;
     }
 
-    public DownloadResult downloadFile(Nzb.File file) throws IOException {
-        var fileName = sanitizeFileName(file.getSubject());
-        var group = file.getGroups().getGroup().getFirst();
+    public DownloadResult downloadFile(NzbFile nzbFile) throws IOException {
+        var fileName = sanitizeFileName(nzbFile.getSubject());
+        var group = nzbFile.getGroups().getGroup().getFirst();
 
         if (!selectNewsgroup(group)) {
             throw new IOException("Failed to select group: " + group);
@@ -33,7 +31,7 @@ public class UsenetDownloadService {
         }
 
         var outputFile = new File(downloadDir, fileName);
-        var segments = file.getSegments().getSegment();
+        var segments = nzbFile.getSegments().getSegment();
 
         System.out.println("Downloading: " + fileName);
 
@@ -52,7 +50,7 @@ public class UsenetDownloadService {
         return DownloadResult.success(fileName, outputFile);
     }
 
-    public void populateNzbFileSizes(Nzb.File file) throws Exception {
+    public void populateNzbFileSizes(NzbFile file) throws Exception {
         var messageId = normalizeMessageId(file.getSegments().getSegment().getFirst().getValue());
         client.selectNewsgroup(file.getGroups().getGroup().getFirst());
         var reader = client.retrieveArticle(messageId);
@@ -68,7 +66,7 @@ public class UsenetDownloadService {
         MultiPartDecoder.YencPartInfo partInfo = decoder.parseYencPartInfo(reader);
         long position = 0;
         for (int i = 0; i < file.getSegments().getSegment().size() - 1; i++) {
-            Nzb.File.Segments.Segment segment = file.getSegments().getSegment().get(i);
+            Segment segment = file.getSegment(i);
             segment.setSize(partInfo.end());
             segment.setStartPosition(position);
             position += partInfo.end();
@@ -82,7 +80,7 @@ public class UsenetDownloadService {
 
     }
 
-    private byte[] downloadSegment(Nzb.File.Segments.Segment segment, int totalSegments) throws IOException {
+    private byte[] downloadSegment(Segment segment, int totalSegments) throws IOException {
         var messageId = normalizeMessageId(segment.getValue());
 
         System.out.printf("  Segment %d/%d: %s%n",

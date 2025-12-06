@@ -1,13 +1,10 @@
-package org.example.webdav;
+package org.webdav;
 
 import io.milton.annotations.BeanProperty;
 import io.milton.annotations.BeanPropertyResource;
-import io.milton.http.FileItem;
-import io.milton.http.Range;
-import io.milton.http.Auth;
+import io.milton.http.*;
 import io.milton.http.exceptions.*;
 import io.milton.resource.FileResource;
-import io.milton.resource.GetableResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -37,10 +34,7 @@ public class VirtualWebDavFile extends TResource implements FileResource {
         this.displayname = inputStream.getFile().filename();
         this.getetag = this.id.toString();
         this.getcontentlength = inputStream.getFile().getSize();
-        String fname = inputStream.getFile().filename();
-        if (fname.endsWith(".mp4")) this.getcontenttype = "video/mp4";
-        else if (fname.endsWith(".mkv")) this.getcontenttype = "video/x-matroska";
-        else this.getcontenttype = "application/octet-stream";
+        this.getcontenttype = vf.getContentType();
         this.getlastmodified = new Date();
         this.creationdate = new Date();
     }
@@ -131,25 +125,43 @@ public class VirtualWebDavFile extends TResource implements FileResource {
     public void sendContent(OutputStream out, Range range, Map<String, String> params, String contentType) throws IOException {
         log.info("sendContent called");
 
+        Request request = HttpManager.request();
+        Response responseHandler = HttpManager.response();
+        responseHandler.setAcceptRanges("bytes");
+        log.debug("Request headers: " + request.getHeaders());
+
+
         long start = 0;
         long end = vf.getSize() - 1;
 
         if (range != null) {
             start = range.getStart();
-            end = range.getFinish();
+            // Handle open-ended ranges (e.g., "bytes=0-")
+            if (range.getFinish() != null) {
+                end = range.getFinish();
+            }
+            // Ensure end doesn't exceed file size
+            end = Math.min(end, vf.getSize() - 1);
         }
 
-        long bytesToWrite = end - start + 1;
+        log.debug("Stream requested for range {} to {}", start, end);
+
+        int bytesToWrite = Math.toIntExact(end - start + 1);
         //TODO support seeking and ranges properly
         try (OnDemandNzbInputStream nzbStream = new OnDemandNzbInputStream(vf)) {
             if (start > 0) nzbStream.skip(start);
             int bufferLength = 65536;
             byte[] buffer = new byte[bufferLength];
             int read;
-            while ((read = nzbStream.read(buffer, 0, bufferLength)) != -1) {
+            int lengthToRead = Math.min(bufferLength, bytesToWrite);
+            while ((read = nzbStream.read(buffer, 0, lengthToRead)) != -1 && bytesToWrite > 0) {
                 log.debug("sendContent: read " + read + " bytes");
                 out.write(buffer, 0, read);
+                bytesToWrite -= read;
             }
+        } catch (Exception e) {
+            log.error("Error sending content: " + e.getMessage(), e);
+            throw new IOException("Error sending content", e);
         }
     }
 

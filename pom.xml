@@ -94,6 +94,16 @@
             <artifactId>sevenzipjbinding-all-platforms</artifactId>
             <version>16.02-2.01</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>3.2.3</version>
+        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.apache.tika</groupId>-->
+<!--            <artifactId>tika-parsers-standard-package</artifactId>-->
+<!--            <version>3.2.3</version>-->
+<!--        </dependency>-->
     </dependencies>
     <dependencyManagement>
         <dependencies>
@@ -106,26 +116,6 @@
     </dependencyManagement>
     <build>
         <plugins>
-<!--            <plugin>-->
-<!--                <groupId>org.codehaus.mojo</groupId>-->
-<!--                <artifactId>jaxb2-maven-plugin</artifactId>-->
-<!--                <version>3.1.0</version>-->
-<!--                <executions>-->
-<!--                    <execution>-->
-<!--                        <id>xjc</id>-->
-<!--                        <goals>-->
-<!--                            <goal>xjc</goal>-->
-<!--                        </goals>-->
-<!--                    </execution>-->
-<!--                </executions>-->
-<!--                <configuration>-->
-<!--                    <sources>-->
-<!--                        <source>src/main/resources/nzb.xsd</source>-->
-<!--                    </sources>-->
-<!--                    <outputDirectory>${basedir}/src/main/java</outputDirectory>-->
-<!--                    <clearOutputDir>false</clearOutputDir>-->
-<!--                </configuration>-->
-<!--            </plugin>-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

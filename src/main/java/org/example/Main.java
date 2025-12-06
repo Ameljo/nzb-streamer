@@ -2,8 +2,6 @@ package org.example;
 
 import io.milton.servlet.MiltonFilter;
 import jakarta.servlet.DispatcherType;
-import org.NzbUtils;
-import org.apache.commons.logging.Log;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jetty.ee10.servlet.FilterHolder;
@@ -11,22 +9,27 @@ import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
 import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.Slf4jRequestLogWriter;
-import org.example.webdav.VirtualFile;
-import org.example.webdav.VirtualWebDavFactory;
+import org.webdav.VirtualFile;
+import org.webdav.VirtualWebDavFactory;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
+import org.transformers.NzbFileToVirtualFileTransformer;
+import org.transformers.NzbFileTransformer;
 
-import java.net.URL;
 import java.util.EnumSet;
-import java.util.Enumeration;
 
 public class Main {
     private static Logger logger = LogManager.getLogger(Main.class.getName());
+    private static final String SERVER = "YOUR_USENET_SERVER";
+    private static final int PORT = 119;
+    private static final String USERNAME = "YOUR_USENET_USERNAME";
+    private static final String PASSWORD = "YOUR_USENET_PASSWORD";
+
     public static void main(String[] args) throws Exception {
         // Create the VirtualWebDav factory
-        VirtualWebDavFactory factory = new VirtualWebDavFactory();
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample3.nzb"));
-        VirtualFile vf = new VirtualFile(nzb.getFile().get(3).getTotalBytes(), NzbUtils.sanitizeFileName(nzb.getFile().get(3).getSubject()), nzb.getFile().get(3));
+        NzbFileTransformer<VirtualFile> transformer = new NzbFileToVirtualFileTransformer();
+        VirtualFile vf = transformer.transform(nzb.getFile(3));
         VirtualWebDavFactory.addFile(vf.filename(), vf);
 
 

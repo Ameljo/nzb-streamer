@@ -2,9 +2,11 @@ package org.service;
 
 import org.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
+import org.apache.logging.log4j.Logger;
 import org.decoder.MultiPartDecoder;
 import org.model.DownloadResult;
-import org.model.Nzb;
+import org.model.NzbFile;
+import org.model.Segment;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -12,6 +14,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class UsenetAsyncDownloadService {
+    private static final Logger log = org.apache.logging.log4j.LogManager.getLogger(UsenetAsyncDownloadService.class);
     private final NNTPClient client;
     private final String outputDirectory;
 
@@ -25,7 +28,7 @@ public class UsenetAsyncDownloadService {
         this.outputDirectory = outputDirectory;
     }
 
-    public DownloadResult downloadFile(Nzb.File file) throws IOException {
+    public DownloadResult downloadFile(NzbFile file) throws IOException {
         var fileName = sanitizeFileName(file.getSubject());
         var group = file.getGroups().getGroup().getFirst();
 
@@ -89,7 +92,7 @@ public class UsenetAsyncDownloadService {
         return DownloadResult.success(fileName, outputFile);
     }
 
-    private TempSegment downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, int totalSegments, String group) throws IOException {
+    private TempSegment downloadAndDecodeSegment(Segment segment, int totalSegments, String group) throws IOException {
         var messageId = normalizeMessageId(segment.getValue());
         System.out.printf("  Segment %d/%d: %s (async)%n", segment.getNumber(), totalSegments, messageId);
 
@@ -127,7 +130,7 @@ public class UsenetAsyncDownloadService {
         return new TempSegment(segment.getNumber().intValue(), tempFile);
     }
 
-    public byte[] downloadAndDecodeSegment(Nzb.File.Segments.Segment segment, String group) throws IOException {
+    public byte[] downloadAndDecodeSegment(Segment segment, String group) throws IOException {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
 //        System.out.printf("  Segment %d/: %s (async)%n", segment.getNumber(), messageId);
 
@@ -145,7 +148,7 @@ public class UsenetAsyncDownloadService {
 
         MultiPartDecoder decoder = new MultiPartDecoder();
         byte[] decoded = decoder.decode(reader);
-        System.out.println("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
+        log.debug("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
 
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try  {
@@ -154,7 +157,7 @@ public class UsenetAsyncDownloadService {
             bos.close();
         }
 
-        System.out.println("Downloaded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
+        log.debug("Downloaded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
 
         return bos.toByteArray();
     }
@@ -162,7 +165,7 @@ public class UsenetAsyncDownloadService {
 
     private boolean selectNewsgroup(String group) throws IOException {
         var selected = client.selectNewsgroup(group);
-        System.out.println("Selected group " + group + ": " + selected);
+        log.debug("Selected group " + group + ": " + selected);
         return selected;
     }
 

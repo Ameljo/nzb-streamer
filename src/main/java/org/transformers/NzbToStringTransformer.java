@@ -1,12 +1,14 @@
 package org.transformers;
 
+import org.model.Nzb;
+
 public class NzbToStringTransformer implements NzbTransformer<String> {
     @Override
-    public String transform(org.model.Nzb nzb) {
+    public String transform(Nzb nzb) {
         // Simple string representation of the Nzb object
         StringBuilder sb = new StringBuilder();
         sb.append("NZB Files:\n");
-        nzb.getFile().forEach(file -> {
+        nzb.getFiles().forEach(file -> {
                 sb.append("- ").append(file.getSubject()).append("\n");
                 sb.append("  Poster: ").append(file.getPoster()).append("\n");
                 sb.append("  Date: ").append(file.getDate()).append("\n");

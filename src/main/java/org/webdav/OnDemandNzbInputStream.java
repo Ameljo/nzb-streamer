@@ -1,14 +1,10 @@
-package org.example.webdav;
+package org.webdav;
 
-import net.sf.sevenzipjbinding.IInStream;
 import net.sf.sevenzipjbinding.SevenZipException;
-import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.service.UsenetAsyncDownloadService;
 import org.workers.DownloadSegmentsWorker;
 
-import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.*;
@@ -32,29 +28,16 @@ public class OnDemandNzbInputStream extends InputStream {
     private final long length;
 
 
-
-    private static final String SERVER = "YOUR_USENET_SERVER";
-    private static final int PORT = 119;
-    private static final String USERNAME = "YOUR_USENET_USERNAME";
-    private static final String PASSWORD = "YOUR_USENET_PASSWORD";
-
     private DownloadSegmentsWorker downloadWorker;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private Future<Boolean> runningTask;
 
 
-    private final NNTPClient client;
 
     public OnDemandNzbInputStream(VirtualFile file) {
         this.file = file;
         this.fileSize = file.getSize();
         this.length = fileSize;
-        client = new NNTPClient();
-//        try {
-//            client = initNntpClient();
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
     }
 
     @Override
@@ -78,7 +61,9 @@ public class OnDemandNzbInputStream extends InputStream {
         if(currentChunk == null || chunkPos >= currentChunk.length) {
             try {
                 currentChunk = bufferQueue.take();
-                chunkPos = 0;
+                if (chunkPos >= currentChunk.length) {
+                    chunkPos = 0;
+                }
             } catch (InterruptedException e) {
                 throw new IOException("Interrupted while waiting for data", e);
             }
@@ -96,7 +81,7 @@ public class OnDemandNzbInputStream extends InputStream {
         position += actualSkip;
         segmentIndex.set(file.getNzbFile().getSegmentAtPosition(position));
 
-        long offsetInSegment = position - file.getNzbFile().getSegments().getSegment().get(segmentIndex.get()).getStartPosition();
+        long offsetInSegment = position - file.getNzbFile().getSegment(segmentIndex.get()).getStartPosition();
         if (offsetInSegment > 0) {
             currentChunk = null; // Force reload of segment
             chunkPos = (int) offsetInSegment; // Will need to skip within segment
@@ -109,52 +94,6 @@ public class OnDemandNzbInputStream extends InputStream {
         return file;
     }
 
-    private NNTPClient initNntpClient() throws IOException {
-        NNTPClient client = new NNTPClient();
-        client.connect(SERVER, PORT);
-        log.debug("Connected to NNTP server: " + SERVER + ":" + PORT);
-        if (!client.authenticate(USERNAME, PASSWORD)) {
-            throw new IOException("Failed to login to NNTP server: " + client.getReplyString());
-        }
-        log.debug("Authenticated to NNTP server as user: " + USERNAME);
-        return client;
-    }
-
-    private void downloadNzbSegments() {
-        NNTPClient nntpClient = null;
-        try {
-            nntpClient = initNntpClient();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        UsenetAsyncDownloadService downloadService = new UsenetAsyncDownloadService(nntpClient, "temp");
-        int segments = file.getNzbFile().getSegments().getSegment().size();
-
-        // Start from current segment index (set by seek)
-        int currentSegment = 0;
-        long bytesDownloaded = 0;
-
-        while ((currentSegment = segmentIndex.get()) < segments && running.get()) {
-            try {
-                if (bufferQueue.isEmpty() || bufferQueue.size() < 4) {
-                    byte[] chunk = downloadService.downloadAndDecodeSegment(
-                            file.getNzbFile().getSegments().getSegment().get(currentSegment),
-                            file.getNzbFile().getGroups().getGroup().getFirst()
-                    );
-                    bufferQueue.put(chunk);
-                    bytesDownloaded += chunk.length;
-                    segmentIndex.incrementAndGet();
-                }
-            } catch (IOException | InterruptedException e) {
-                log.error("Error downloading segment {}", currentSegment, e);
-                break;
-            }
-        }
-        endOfSegments.set(true);
-        running.set(false);
-        log.debug("Thread finished downloading segments. Total bytes downloaded: {}", bytesDownloaded);
-    }
-
     @Override
     public int available() throws IOException {
         return (int) (fileSize - position);
@@ -163,12 +102,10 @@ public class OnDemandNzbInputStream extends InputStream {
     @Override
     public void close() throws IOException {
         super.close();
-        if (client != null && client.isConnected()) {
-            client.disconnect();
-            log.debug("Disconnected from NNTP server");
-        }
+        executor.shutdown();
         running.set(false);
         bufferQueue.clear();
+        log.debug("OnDemandNzbInputStream closed");
     }
 
     public synchronized long seek(long offset, int seekOrigin) throws SevenZipException {
@@ -193,7 +130,7 @@ public class OnDemandNzbInputStream extends InputStream {
 
         // If seeking to a different segment, reset download state
         int newSegmentIndex = file.getNzbFile().getSegmentAtPosition(newPos);
-        int newChunkPos = Math.toIntExact(newPos - file.getNzbFile().getSegments().getSegment().get(newSegmentIndex).getStartPosition());
+        int newChunkPos = Math.toIntExact(newPos - file.getNzbFile().getSegment(newSegmentIndex).getStartPosition());
         if (newSegmentIndex != segmentIndex.get() || newPos < position) {
             log.debug("Seeking from position {} (segment {}) to {} (segment {})",
                     position, segmentIndex, newPos, newSegmentIndex);
