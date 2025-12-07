@@ -2,7 +2,7 @@ package org.workers;
 
 import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.Logger;
-import org.webdav.VirtualFile;
+import org.model.VirtualFile;
 import org.service.UsenetAsyncDownloadService;
 
 import java.io.IOException;

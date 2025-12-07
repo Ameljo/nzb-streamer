@@ -5,9 +5,9 @@ import net.sf.sevenzipjbinding.simple.ISimpleInArchive;
 import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem;
 import org.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
-import org.webdav.OnDemandNzbInputStream;
-import org.webdav.OnDemandRRARIInStream;
-import org.webdav.VirtualFile;
+import org.streams.VirtualFileInputStream;
+import org.streams.OnDemandRRARIInStream;
+import org.model.VirtualFile;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
 import org.service.UsenetDownloadService;
@@ -35,7 +35,7 @@ public class SevenZipTest {
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample4.nzb"));
         downloadService.populateNzbFileSizes(nzb.getFile(2));
         VirtualFile vf = new VirtualFile(nzb.getFile(2).getSize(), NzbUtils.sanitizeFileName(nzb.getFile(2).getSubject()), nzb.getFile(2));
-        OnDemandNzbInputStream ods = new OnDemandNzbInputStream(vf);
+        VirtualFileInputStream ods = new VirtualFileInputStream(vf);
 
         OnDemandRRARIInStream rrarIInStream = new OnDemandRRARIInStream(ods);
 

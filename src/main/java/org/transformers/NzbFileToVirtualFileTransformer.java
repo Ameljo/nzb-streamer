@@ -1,7 +1,7 @@
 package org.transformers;
 
 import org.apache.tika.Tika;
-import org.webdav.VirtualFile;
+import org.model.VirtualFile;
 import org.model.NzbFile;
 
 import java.io.InputStream;

@@ -1,11 +1,19 @@
 package org.model;
 
+import jakarta.persistence.*;
 import jakarta.xml.bind.annotation.*;
 import java.math.BigInteger;
+import java.util.UUID;
 
+@Entity
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "", propOrder = {"value"})
 public class Segment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @XmlTransient
+    private UUID id;
     @XmlValue
     protected String value;
     @XmlAttribute(name = "bytes", required = true)
@@ -18,6 +26,9 @@ public class Segment {
 
     @XmlTransient
     private long startPosition; // Position of the segment in the decoded file
+
+    public Segment() {
+    }
 
     public String getValue() { return value; }
     public void setValue(String value) { this.value = value; }

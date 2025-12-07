@@ -7,7 +7,7 @@ import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
-import org.webdav.VirtualFile;
+import org.model.VirtualFile;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
 import org.transformers.NzbFileToVirtualFileTransformer;

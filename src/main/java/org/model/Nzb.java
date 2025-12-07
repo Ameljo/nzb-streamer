@@ -8,9 +8,11 @@
 
 package org.model;
 
+import jakarta.persistence.*;
 import jakarta.xml.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "", propOrder = {
@@ -18,11 +20,23 @@ import java.util.List;
     "files"
 })
 @XmlRootElement(name = "nzb")
+@Entity
 public class Nzb {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @XmlTransient
+    private UUID id;
+
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
     protected Head head;
+
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @XmlElement(name = "file")
     protected List<NzbFile> files;
+
+    public Nzb() {
+    }
 
     public Head getHead() {
         return head;

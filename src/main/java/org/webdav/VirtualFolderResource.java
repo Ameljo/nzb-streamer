@@ -3,10 +3,8 @@ package org.webdav;
 import io.milton.common.StreamUtils;
 import io.milton.http.Range;
 import io.milton.http.Request;
-import io.milton.resource.CollectionResource;
-import io.milton.resource.MakeCollectionableResource;
-import io.milton.resource.PutableResource;
-import io.milton.resource.Resource;
+import io.milton.resource.*;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -18,22 +16,27 @@ import java.util.Map;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.model.VirtualFile;
+import org.repository.VirtualFileRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import org.streams.VirtualFileInputStream;
 
-public class TFolderResource extends TResource implements PutableResource, MakeCollectionableResource {
+public class VirtualFolderResource extends AbstractResource implements FolderResource {
 
-    private static Logger log = LogManager.getLogger(TResource.class);
-    ArrayList<Resource> children = new ArrayList<Resource>();
+    private static Logger log = LogManager.getLogger(AbstractResource.class);
+    List<Resource> children = new ArrayList<Resource>();
 
-    public TFolderResource(TFolderResource parent, String name) {
+    public VirtualFolderResource(VirtualFolderResource parent, String name) {
         super(parent, name);
         log.debug("created new folder: " + name);
     }
 
     @Override
-    protected Object clone(TFolderResource newParent, String newName) {
-        TFolderResource newFolder = new TFolderResource(newParent, newName);
+    protected Object clone(VirtualFolderResource newParent, String newName) {
+        VirtualFolderResource newFolder = new VirtualFolderResource(newParent, newName);
         for (Resource child : parent.getChildren()) {
-            TResource res = (TResource) child;
+            AbstractResource res = (AbstractResource) child;
             res.clone(newFolder, child.getName()); // will auto-add to folder
         }
         return newFolder;
@@ -43,8 +46,8 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
     public Long getContentLength() {
         long size = 0L;
         for (Resource r : children) {
-            if (r instanceof TResource) {
-                Long l = ((TResource) r).getContentLength();
+            if (r instanceof AbstractResource) {
+                Long l = ((AbstractResource) r).getContentLength();
                 if (l != null) {
                     size += l;
                 }
@@ -67,6 +70,10 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
         return children;
     }
 
+    public void setChildren(List<Resource> children) {
+        this.children = children;
+    }
+
     static ByteArrayOutputStream readStream(final InputStream in) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         StreamUtils.readTo(in, bos);
@@ -76,14 +83,13 @@ public class TFolderResource extends TResource implements PutableResource, MakeC
     @Override
     public CollectionResource createCollection(String newName) {
         log.debug("createCollection: " + newName);
-        TFolderResource r = new TFolderResource(this, newName);
-        return r;
+        return new VirtualFolderResource(this, newName);
     }
 
     @Override
     public Resource createNew(String newName, InputStream inputStream, Long length, String contentType) throws IOException {
         log.debug("createNew: " + " name: " + newName + " current child count: " + this.children.size());
-        VirtualWebDavFile r = new VirtualWebDavFile((OnDemandNzbInputStream) inputStream, this);
+        VirtualFileResource r = new VirtualFileResource((VirtualFileInputStream) inputStream, this);
         r.createdDate = new java.util.Date();
         log.debug("new child count: " + this.children.size());
         return r;

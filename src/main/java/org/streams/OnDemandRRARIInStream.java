@@ -1,4 +1,4 @@
-package org.webdav;
+package org.streams;
 
 import net.sf.sevenzipjbinding.IInStream;
 import net.sf.sevenzipjbinding.SevenZipException;
@@ -7,9 +7,9 @@ import java.io.IOException;
 
 public class OnDemandRRARIInStream implements IInStream {
 
-    private final OnDemandNzbInputStream inputStream;
+    private final VirtualFileInputStream inputStream;
 
-    public OnDemandRRARIInStream(OnDemandNzbInputStream inputStream) {
+    public OnDemandRRARIInStream(VirtualFileInputStream inputStream) {
         this.inputStream = inputStream;
     }
 

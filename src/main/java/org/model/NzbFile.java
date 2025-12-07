@@ -1,13 +1,25 @@
 package org.model;
 
+import jakarta.persistence.*;
 import jakarta.xml.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "", propOrder = {"groups", "segments"})
+@Entity
 public class NzbFile {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @XmlTransient
+    private UUID id;
+
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
     protected Groups groups;
+
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
     @XmlElement(required = true)
     protected Segments segments;
     @XmlAttribute(name = "poster")
@@ -19,6 +31,9 @@ public class NzbFile {
 
     @XmlTransient
     private long size;
+
+    public NzbFile() {
+    }
 
     public Groups getGroups() { return groups; }
     public void setGroups(Groups groups) { this.groups = groups; }

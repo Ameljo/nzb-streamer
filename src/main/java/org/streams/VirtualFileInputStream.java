@@ -1,8 +1,9 @@
-package org.webdav;
+package org.streams;
 
 import net.sf.sevenzipjbinding.SevenZipException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.model.VirtualFile;
 import org.workers.DownloadSegmentsWorker;
 
 import java.io.IOException;
@@ -11,9 +12,9 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class OnDemandNzbInputStream extends InputStream {
+public class VirtualFileInputStream extends InputStream {
 
-    private static final Logger log = LogManager.getLogger(OnDemandNzbInputStream.class);
+    private static final Logger log = LogManager.getLogger(VirtualFileInputStream.class);
 
     private final long fileSize;
     private long position = 0;
@@ -34,7 +35,7 @@ public class OnDemandNzbInputStream extends InputStream {
 
 
 
-    public OnDemandNzbInputStream(VirtualFile file) {
+    public VirtualFileInputStream(VirtualFile file) {
         this.file = file;
         this.fileSize = file.getSize();
         this.length = fileSize;

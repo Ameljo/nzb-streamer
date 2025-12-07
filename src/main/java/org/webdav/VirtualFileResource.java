@@ -7,6 +7,8 @@ import io.milton.http.exceptions.*;
 import io.milton.resource.FileResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.model.VirtualFile;
+import org.streams.VirtualFileInputStream;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -14,9 +16,9 @@ import java.util.Date;
 import java.util.Map;
 
 @BeanPropertyResource(value = "DAV:")
-public class VirtualWebDavFile extends TResource implements FileResource {
+public class VirtualFileResource extends AbstractResource implements FileResource {
 
-    private static final Logger log = LogManager.getLogger(VirtualWebDavFile.class);
+    private static final Logger log = LogManager.getLogger(VirtualFileResource.class);
 
     private final VirtualFile vf;
 
@@ -28,7 +30,7 @@ public class VirtualWebDavFile extends TResource implements FileResource {
     private Date getlastmodified;
     private Date creationdate;
 
-    public VirtualWebDavFile(OnDemandNzbInputStream inputStream, TFolderResource parent) {
+    public VirtualFileResource(VirtualFileInputStream inputStream, VirtualFolderResource parent) {
         super(parent, inputStream.getFile().filename());
         this.vf = inputStream.getFile();
         this.displayname = inputStream.getFile().filename();
@@ -99,7 +101,7 @@ public class VirtualWebDavFile extends TResource implements FileResource {
     }
 
     @Override
-    protected Object clone(TFolderResource newParent, String newName) {
+    protected Object clone(VirtualFolderResource newParent, String newName) {
         log.info("clone called, returning: null");
         return null;
     }
@@ -148,7 +150,7 @@ public class VirtualWebDavFile extends TResource implements FileResource {
 
         int bytesToWrite = Math.toIntExact(end - start + 1);
         //TODO support seeking and ranges properly
-        try (OnDemandNzbInputStream nzbStream = new OnDemandNzbInputStream(vf)) {
+        try (VirtualFileInputStream nzbStream = new VirtualFileInputStream(vf)) {
             if (start > 0) nzbStream.skip(start);
             int bufferLength = 65536;
             byte[] buffer = new byte[bufferLength];
@@ -163,12 +165,6 @@ public class VirtualWebDavFile extends TResource implements FileResource {
             log.error("Error sending content: " + e.getMessage(), e);
             throw new IOException("Error sending content", e);
         }
-    }
-
-    @Override
-    public Long getMaxAgeSeconds(Auth auth) {
-        log.info("getMaxAgeSeconds called, returning: 3600");
-        return 3600L; // optional caching
     }
 
     @Override

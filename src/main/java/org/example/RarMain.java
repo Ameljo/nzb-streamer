@@ -2,8 +2,8 @@ package org.example;
 
 import org.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
-import org.webdav.OnDemandNzbInputStream;
-import org.webdav.VirtualFile;
+import org.streams.VirtualFileInputStream;
+import org.model.VirtualFile;
 import org.model.Nzb;
 import org.parser.NzbParserFactory;
 import org.service.UsenetDownloadService;
@@ -25,7 +25,7 @@ public class RarMain {
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample4.nzb"));
         downloadService.populateNzbFileSizes(nzb.getFile(2));
         VirtualFile vf = new VirtualFile(nzb.getFile(2).getSize(), NzbUtils.sanitizeFileName(nzb.getFile(2).getSubject()), nzb.getFile(2));
-        OnDemandNzbInputStream ods = new OnDemandNzbInputStream(vf);
+        VirtualFileInputStream ods = new VirtualFileInputStream(vf);
         int read = 0;
        while ((read =  ods.read()) != -1){
        }
