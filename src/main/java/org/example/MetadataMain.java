@@ -7,11 +7,11 @@ import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
-import org.model.VirtualFile;
-import org.model.Nzb;
-import org.parser.NzbParserFactory;
-import org.transformers.NzbFileToVirtualFileTransformer;
-import org.transformers.NzbFileTransformer;
+import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.model.Nzb;
+import org.nzbstreamer.parser.NzbParserFactory;
+import org.nzbstreamer.transformers.NzbFileToVirtualFileTransformer;
+import org.nzbstreamer.transformers.NzbFileTransformer;
 import org.xml.sax.SAXException;
 
 import java.io.*;
@@ -21,7 +21,7 @@ public class MetadataMain {
     public static void main(String[] args) throws Exception {
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample6.nzb"));
         NzbFileTransformer<VirtualFile> transformer = new NzbFileToVirtualFileTransformer();
-        VirtualFile vf = transformer.transform(nzb.getFile(1));
+        VirtualFile vf = transformer.transform(nzb.getFile(1)).getFirst();
         log.debug("test");
         Tika tika = new Tika();
         try(InputStream is = vf.getInputStream()) {

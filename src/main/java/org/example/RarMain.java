@@ -1,12 +1,12 @@
 package org.example;
 
-import org.NzbUtils;
+import org.nzbstreamer.utils.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
-import org.streams.VirtualFileInputStream;
-import org.model.VirtualFile;
-import org.model.Nzb;
-import org.parser.NzbParserFactory;
-import org.service.UsenetDownloadService;
+import org.nzbstreamer.streams.VirtualFileInputStream;
+import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.model.Nzb;
+import org.nzbstreamer.parser.NzbParserFactory;
+import org.nzbstreamer.service.UsenetDownloadService;
 
 public class RarMain {
 
@@ -20,7 +20,7 @@ public class RarMain {
         NNTPClient client = new NNTPClient();
         client.connect(SERVER, PORT);
         client.authenticate(USERNAME, PASSWORD);
-        UsenetDownloadService downloadService = new UsenetDownloadService(client, "downloads");
+        UsenetDownloadService downloadService = new UsenetDownloadService(client);
 
         Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample4.nzb"));
         downloadService.populateNzbFileSizes(nzb.getFile(2));

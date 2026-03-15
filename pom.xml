@@ -12,7 +12,7 @@
     </parent>
 
     <groupId>org.example</groupId>
-    <artifactId>nzb-parser</artifactId>
+    <artifactId>nzb-streamer</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>

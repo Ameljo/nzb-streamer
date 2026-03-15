@@ -36,3 +36,10 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+application-local.properties
+application-*.properties
+!application.properties
+*.env
+.env
+.env.local
