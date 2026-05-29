@@ -94,6 +94,12 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
+        <!-- Source: https://mvnrepository.com/artifact/io.kaitai/kaitai-struct-runtime -->
+        <dependency>
+            <groupId>io.kaitai</groupId>
+            <artifactId>kaitai-struct-runtime</artifactId>
+            <version>0.11</version>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>

@@ -38,10 +38,12 @@ seq:
 
   - id: blocks
     type: block
-    repeat: eos
+    repeat: until
+    repeat-until: _.is_eos
     doc: |
-      Sequence of all archive blocks. Parsing continues until end-of-stream.
-      The last block in a valid archive is always a `block_eos` (type 5).
+      Sequence of archive blocks. Stops as soon as an `block_eos` (type 5) is
+      encountered — physical end-of-stream is never required, which is safe for
+      partial / streaming sources where the compressed payload is not available.
 
 types:
 
@@ -105,16 +107,16 @@ types:
   # ============================================================
   block:
     doc: |
-      Outer wrapper for every RAR5 header block.
+      Outer wrapper for every RAR5 header block — headers only.
 
       Field layout in the archive stream:
         header_crc32  (4 bytes)    CRC32 of all bytes from header_type through end of extra data.
         header_size   (vint)       Byte count of the span covered by the CRC (does NOT include
                                    header_crc32 itself nor the header_size vint).
         header_body   (N bytes)    Parsed via a bounded sub-stream of exactly header_size bytes.
-        data          (M bytes)    Optional payload (e.g. compressed file content) that follows
-                                   the header.  Present when Header flags bit 0x0002 is set;
-                                   M is given by header_body.data_size_value.
+        <data area>   (M bytes)    NOT read by this parser. If you need to advance past it
+                                   before parsing the next block, seek forward by
+                                   header_body.data_size_value bytes in your own stream wrapper.
 
     seq:
       - id: header_crc32
@@ -138,13 +140,90 @@ types:
           exactly header_size.value bytes so that unknown trailing fields in
           future block types are automatically skipped.
 
-      - id: data
+      - id: skip_data
         size: header_body.data_size_value
         if: header_body.has_data
         doc: |
-          Block data area.  For file blocks this contains the compressed file
-          payload; for service blocks it holds service-specific binary data.
-          Only present when Header flags bit 0x0002 is set.
+          Advances the stream past the compressed data area so that the next
+          block header can be found.  The bytes are consumed but never stored.
+          Override KaitaiStream.readBytes(n) to call seek(pos+n) on your
+          VirtualFileInputStream so the payload is not downloaded during header
+          enumeration.
+
+    instances:
+      # --- data position ------------------------------------------------
+      header_size_len:
+        value: >-
+          (header_size.b0 & 0x80) == 0 ? 1 :
+          (header_size.b1 & 0x80) == 0 ? 2 :
+          (header_size.b2 & 0x80) == 0 ? 3 :
+          (header_size.b3 & 0x80) == 0 ? 4 :
+          (header_size.b4 & 0x80) == 0 ? 5 :
+          (header_size.b5 & 0x80) == 0 ? 6 :
+          (header_size.b6 & 0x80) == 0 ? 7 : 8
+        doc: |
+          Number of bytes the header_size vint occupies in the stream (1..8).
+          Used to compute the exact offset of the data area.
+
+      header_total_size:
+        value: 4 + header_size_len + header_size.value
+        doc: |
+          Total byte count of this block's header in the stream:
+            4                    bytes  header_crc32
+            header_size_len      bytes  header_size vint
+            header_size.value    bytes  header_body (type-specific content + extra data)
+          The data area starts immediately after these bytes.
+          Compute the absolute data position as:
+            data_pos = (absolute start position of this block) + header_total_size
+
+      # --- type discrimination -------------------------------------------
+      block_type_enum:
+        value: header_body.header_type.value
+        enum: block_type
+        doc: Block type as a typed enum; avoids raw integer comparisons.
+
+      is_main:
+        value: header_body.header_type.value == 1
+        doc: True when this block is a main archive header (type 1).
+      is_file:
+        value: header_body.header_type.value == 2
+        doc: True when this block is a file header (type 2).
+      is_service:
+        value: header_body.header_type.value == 3
+        doc: True when this block is a service header (type 3; same structure as file header).
+      is_crypt:
+        value: header_body.header_type.value == 4
+        doc: True when this block is an archive encryption header (type 4).
+      is_eos:
+        value: header_body.header_type.value == 5
+        doc: True when this block is an end-of-archive header (type 5).
+
+      # --- typed body accessors -----------------------------------------
+      # Each accessor performs the body cast for the caller; it is only valid
+      # when the corresponding is_* flag is true.  When the condition is false
+      # the accessor returns null (Kaitai omits the field).
+      as_main:
+        value: header_body.body.as<block_main>
+        if: header_body.header_type.value == 1
+        doc: Body cast to block_main.  Only valid when is_main is true.
+      as_file:
+        value: header_body.body.as<block_file>
+        if: header_body.header_type.value == 2
+        doc: Body cast to block_file.  Only valid when is_file is true.
+      as_service:
+        value: header_body.body.as<block_file>
+        if: header_body.header_type.value == 3
+        doc: |
+          Body cast to block_file (service variant).  Only valid when is_service is true.
+          Check the name field for the service record identifier ("CMT", "QO", "ACL", etc.).
+      as_crypt:
+        value: header_body.body.as<block_crypt>
+        if: header_body.header_type.value == 4
+        doc: Body cast to block_crypt.  Only valid when is_crypt is true.
+      as_eos:
+        value: header_body.body.as<block_eos>
+        if: header_body.header_type.value == 5
+        doc: Body cast to block_eos.  Only valid when is_eos is true.
 
   # ============================================================
   #  Common header prefix  (inside the header_size sub-stream)
@@ -209,12 +288,17 @@ types:
           flags bit 0x0001 is set; size is exactly extra_data_size bytes.
 
     instances:
+      header_type_enum:
+        value: header_type.value
+        enum: block_type
+        doc: Block type as a typed enum (same value as header_type.value but enum-typed).
+
       has_data:
         value: (header_flags.value & 0x0002) != 0
         doc: True when a data area follows this header in the outer stream.
 
       data_size_value:
-        value: (header_flags.value & 0x0002) != 0 ? data_size.value : 0
+        value: "(header_flags.value & 0x0002) != 0 ? data_size.value : 0"
         doc: |
           Data area size in bytes, or 0 when no data area is present.
           Safe to use without a separate has_data check.
@@ -328,11 +412,12 @@ types:
 
       - id: mtime
         type: u4
+        if: (file_flags.value & 0x0002) != 0
         doc: |
-          File modification time — always present.
-          UTIME flag set   → Unix time_t (u32, seconds since 1970-01-01 UTC).
-          UTIME flag clear → Low 32 bits of Windows FILETIME
-                             (100-ns ticks since 1601-01-01 UTC).
+          File modification time. Only present when UTIME (0x0002) flag is set.
+          UTIME set   → Unix time_t (u32, seconds since 1970-01-01 UTC).
+          UTIME clear → Field absent; timestamp is in an htime extra record instead.
+                        Windows-created archives almost always have UTIME clear.
 
       - id: data_crc32
         type: u4
@@ -376,7 +461,10 @@ types:
         doc: True when this entry represents a directory.
       has_unix_mtime:
         value: (file_flags.value & 0x0002) != 0
-        doc: True when mtime is a Unix timestamp (false → Windows FILETIME).
+        doc: |
+          True when the mtime field is present in this header AND is a Unix timestamp.
+          False means mtime is absent from the basic header — check the htime
+          extra record for timestamp information (typical for Windows-created archives).
       has_crc32:
         value: (file_flags.value & 0x0004) != 0
         doc: True when data_crc32 is present.
@@ -401,6 +489,14 @@ types:
           Dictionary size index (5 bits, bits 14..10 of compression_info).
           Actual dictionary size = 128 KB << dict_size_index.
           Value 15 means "use the archive-default dictionary size".
+      compression_method_enum:
+        value: (compression_info.value >> 7) & 0x07
+        enum: compression_method
+        doc: Compression method as a typed enum (same bits as compression_method).
+      host_os_enum:
+        value: host_os.value
+        enum: host_os
+        doc: Host OS as a typed enum (same value as host_os.value).
 
   # ============================================================
   #  Block type 4 — Archive encryption header
@@ -520,7 +616,16 @@ types:
     seq:
       - id: record_type
         type: vint
-        doc: Record type identifier — see `extra_record_type` enum.
+        doc: |
+          Record type identifier.  Compare record_type.value against the
+          `extra_record_type` enum constants defined at the bottom of this file:
+            0x0001  crypt    per-file encryption parameters
+            0x0002  hash     file hash (BLAKE2sp or other)
+            0x0003  htime    extended timestamps (mtime / atime / ctime, optional ns)
+            0x0004  version  file version number
+            0x0005  redir    file-system redirection (symbolic / hard link)
+            0x0006  uowner   Unix owner and group info
+            0x0007  subdata  service-record-specific data
 
       - id: data
         size-eos: true
@@ -545,8 +650,10 @@ types:
 
     instances:
       record_type_enum:
-        value: record_type.value.as<extra_record_type>
-        doc: Record type as a typed enum value.
+        value: record_type.value
+        enum: extra_record_type
+        doc: Record type as a typed enum; avoids raw integer comparisons.
+
 
 enums:
 
@@ -581,4 +688,3 @@ enums:
   host_os:
     0: windows
     1: unix
-
