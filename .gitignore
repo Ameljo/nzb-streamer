@@ -43,3 +43,6 @@ application-*.properties
 *.env
 .env
 .env.local
+
+# Downloads folder
+downloads/
