@@ -43,3 +43,7 @@ application-*.properties
 
 # Downloads folder
 downloads/
+
+# Logs folder
+logs/
+
