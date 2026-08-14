@@ -55,9 +55,15 @@ public class RarHeaderTikaParser implements Parser {
     public void parse(InputStream stream, ContentHandler handler, Metadata metadata,
                       ParseContext context) throws IOException, SAXException, TikaException {
 
+        // The parser uses the stream of the caller when the caller gives one. This is necessary
+        // because TikaInputStream.skip reads the bytes and does not move the cursor. Refer to
+        // RarSourceStream. Do not replace this with the stream of the parameter.
+        RarSourceStream source = context.get(RarSourceStream.class);
+        InputStream input = source != null ? source.stream() : stream;
+
         // This method reads the stream. It does not close the stream. The caller keeps the control
         // of the stream. The Tika parser interface makes this necessary.
-        RarArchive archive = new RarHeaderParser().parse(stream);
+        RarArchive archive = new RarHeaderParser().parse(input);
 
         RarArchiveCollector collector = context.get(RarArchiveCollector.class);
         if (collector != null) {

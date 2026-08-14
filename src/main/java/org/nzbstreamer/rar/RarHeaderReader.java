@@ -40,7 +40,13 @@ public final class RarHeaderReader {
         return bytesRead;
     }
 
-    /** The number of bytes that this reader skipped. */
+    /**
+     * The number of bytes that {@link InputStream#skip(long)} reported as skipped.
+     *
+     * <p>This value comes from the stream. A stream with a buffer can read those bytes and report
+     * them as skipped. An example is a {@code BufferedInputStream} with a mark. Thus this value
+     * shows the work of this class, and not always the work of the source of the data.</p>
+     */
     public long bytesSkipped() {
         return bytesSkipped;
     }

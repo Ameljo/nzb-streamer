@@ -3,251 +3,192 @@ package org.nzbstreamer.streams;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.repository.ApplicationContextUtil;
+import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.workers.DownloadSegmentsWorker;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Reads the bytes of a {@link VirtualFile}.
+ *
+ * <p>The stream reads a sequence of bytes. It does not know the segments, the chunks, the volumes
+ * or the archive. The file says if a byte is at the position. The worker gives the bytes.</p>
+ *
+ * <p>{@link #seek(long)} is the only function that changes the position. It stops the worker and
+ * starts a new worker at the new position.</p>
+ */
 public class VirtualFileInputStream extends InputStream {
 
     private static final Logger log = LogManager.getLogger(VirtualFileInputStream.class);
 
-    /**
-     * Makes the worker that downloads the segments. The production code uses
-     * {@link DownloadSegmentsWorker}. A test supplies segments of its own with this interface.
-     */
-    @FunctionalInterface
-    public interface DownloadWorkerFactory {
-        Callable<Boolean> create(AtomicInteger segmentIndex, VirtualFile file,
-                                 BlockingQueue<byte[]> bufferQueue, AtomicBoolean endOfSegments,
-                                 AtomicBoolean running);
-    }
-
-    private final long fileSize;
-    private long position = 0;
-    private final BlockingQueue<byte[]> bufferQueue = new LinkedBlockingQueue<>();
-    private byte[] currentChunk = null;
-    private int chunkPos = 0;
-    private VirtualFile file;
-    private AtomicInteger segmentIndex = new AtomicInteger(0);
-    private AtomicBoolean endOfSegments = new AtomicBoolean(false);
-
-    private AtomicBoolean running = new AtomicBoolean(false);
-    private final long length;
+    private final VirtualFile file;
+    private final SegmentFetcher fetcher;
+    private final boolean background;
 
     /**
-     * The segment that {@link #currentChunk} holds. The value is -1 when no chunk is in memory.
+     * The queue and the flags of the worker that runs now.
      *
-     * <p>{@link #segmentIndex} is not usable for this purpose. The worker increments that value
-     * after each download. Thus it gives the position of the download, and it can be some segments
-     * in front of the position of the read operations.</p>
+     * <p>A move of the cursor makes a new worker with new objects. Thus this class does not wait
+     * for the old worker: that worker writes in its own queue, and nobody reads it.</p>
      */
-    private int currentChunkSegment = -1;
+    private BlockingQueue<Future<byte[]>> bufferQueue = new LinkedBlockingQueue<>();
+    private AtomicBoolean endOfSegments = new AtomicBoolean(false);
+    private AtomicBoolean running = new AtomicBoolean(false);
 
-    /** The segment of the next chunk in the queue. The worker delivers the segments in sequence. */
-    private int nextChunkSegment;
+    private long position;
+    private long markPosition;
 
-    private final DownloadWorkerFactory workerFactory;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private Future<Boolean> runningTask;
+    /** The bytes of the queue that the stream reads now. */
+    private byte[] currentBytes;
+    private int cursor;
 
     public VirtualFileInputStream(VirtualFile file) {
-        this(file, DownloadSegmentsWorker::new);
+        this(file, ApplicationContextUtil.getBean(SegmentFetcher.class), false);
     }
 
-    public VirtualFileInputStream(VirtualFile file, DownloadWorkerFactory workerFactory) {
-        this.file = file;
-        this.workerFactory = workerFactory;
-        this.fileSize = file.getSize();
-        this.length = fileSize;
-        int firstSegment = segmentOf(0);
-        this.segmentIndex.set(firstSegment);
-        this.nextChunkSegment = firstSegment;
-        this.chunkPos = offsetInSegment(0, firstSegment);
+    public VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher) {
+        this(file, fetcher, false);
     }
 
     /**
-     * Changes a position in this file to a position in the NZB file. A virtual file that is in a
-     * RAR archive starts at {@link VirtualFile#getOffset()} in the NZB file.
+     * @param background true for work that must not stop a read operation of a player. It uses one
+     *                   part of the connections and it makes one attempt for each segment.
      */
-    private long absolutePosition(long streamPosition) {
-        return file.getOffset() + streamPosition;
+    public VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher, boolean background) {
+        this.file = file;
+        this.fetcher = fetcher;
+        this.background = background;
+        seek(0);
     }
 
-    /** Gives the segment that holds the given position of this file. */
-    private int segmentOf(long streamPosition) {
-        return file.getNzbFile().getSegmentAtPosition(absolutePosition(streamPosition));
-    }
-
-    /** Gives the position in the given segment for the given position of this file. */
-    private int offsetInSegment(long streamPosition, int segment) {
-        long segmentStart = file.getNzbFile().getSegment(segment).getStartPosition();
-        return Math.toIntExact(absolutePosition(streamPosition) - segmentStart);
+    /** Makes a stream for work in the background. */
+    public static VirtualFileInputStream background(VirtualFile file, SegmentFetcher fetcher) {
+        return new VirtualFileInputStream(file, fetcher, true);
     }
 
     @Override
     public int read() throws IOException {
-
-        if (position >= fileSize) {
-            log.debug("Missing bytes at end of file: " + (fileSize - position));
+        if (!file.hasNext(position)) {
             return -1;
         }
-
-        if (endOfSegments.get() && bufferQueue.isEmpty() && (currentChunk == null || chunkPos >= currentChunk.length)) {
-            log.info("Missing bytes at end of file: " + (fileSize - position));
-            return -1;
-        }
-
-        // The queue can hold data after the worker stops. The stream must use that data first. A
-        // new worker at this time downloads nothing and does no useful work. The queue must also
-        // be empty to keep nextChunkSegment equal to the segment of the next chunk.
-        if (!running.get() && bufferQueue.isEmpty()
-                && (currentChunk == null || chunkPos >= currentChunk.length)) {
-            log.debug("Executer shutdown? " + (executor.isShutdown() || executor.isTerminated()));
-            startWorkerAt(segmentIndex.get());
-        }
-
-        if (currentChunk == null || chunkPos >= currentChunk.length) {
-            try {
-                currentChunk = bufferQueue.take();
-                currentChunkSegment = nextChunkSegment++;
-                if (chunkPos >= currentChunk.length) {
-                    chunkPos = 0;
-                }
-            } catch (InterruptedException e) {
-                throw new IOException("Interrupted while waiting for data", e);
+        if (currentBytes == null || cursor >= currentBytes.length) {
+            // The worker stopped and the queue is empty. No more bytes come, thus a wait here
+            // would not stop.
+            if (endOfSegments.get() && bufferQueue.isEmpty()) {
+                log.error("{}: the worker stopped at position {} of {}, thus the file is not"
+                        + " complete", file.filename(), position, file.getSize());
+                return -1;
             }
+            try {
+                currentBytes = bufferQueue.take().get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while waiting for data", e);
+            } catch (ExecutionException e) {
+                // The caller of the stream possibly writes this error in the log as a normal end
+                // of a request. Thus this class writes it here with its cause.
+                log.error("{}: cannot download the segment of position {} of {}", file.filename(),
+                        position, file.getSize(), e.getCause());
+                throw new IOException("Cannot download the segment of position " + position,
+                        e.getCause());
+            }
+            cursor = 0;
         }
-        byte b = currentChunk[chunkPos++];
         position++;
-        return b & 0xFF;
-    }
-
-    @Override
-    public long skip(long n) {
-        if (n <= 0) {
-            return 0;
-        }
-        long actualSkip = Math.min(n, fileSize - position);
-        long target = position + actualSkip;
-
-        if (moveInsideCurrentChunk(target)) {
-            log.debug("Skipped {} bytes inside segment {}, new position {}", actualSkip,
-                    currentChunkSegment, position);
-            return actualSkip;
-        }
-
-        restartAt(target);
-        log.info("Skipped {} bytes, new position {}", actualSkip, position);
-        return actualSkip;
+        return currentBytes[cursor++] & 0xFF;
     }
 
     public VirtualFile getFile() {
         return file;
     }
 
+    /** Moves the cursor and starts the worker at the new position. */
+    public void seek(long newPosition) {
+        position = newPosition;
+        if (!file.hasNext(position)) {
+            stopWorker();
+            return;
+        }
+        startWorkerAt(position);
+    }
+
     @Override
-    public int available() throws IOException {
-        return (int) (fileSize - position);
+    public long skip(long count) {
+        long actual = Math.max(0, Math.min(count, file.getSize() - position));
+        seek(position + actual);
+        return actual;
+    }
+
+    @Override
+    public int available() {
+        return (int) Math.min(Integer.MAX_VALUE, file.getSize() - position);
+    }
+
+    /**
+     * This stream supports mark and reset.
+     *
+     * <p>This is important for Tika. {@code TikaInputStream.get} puts a {@code BufferedInputStream}
+     * around a stream without this support. That buffer then reads the bytes of a skip operation
+     * instead of a move of the cursor, and a skip across a large file downloads all the segments
+     * of the file.</p>
+     */
+    @Override
+    public boolean markSupported() {
+        return true;
+    }
+
+    @Override
+    public synchronized void mark(int readLimit) {
+        markPosition = position;
+    }
+
+    @Override
+    public synchronized void reset() {
+        seek(markPosition);
     }
 
     @Override
     public void close() throws IOException {
         super.close();
-        executor.shutdown();
-        running.set(false);
-        bufferQueue.clear();
-        log.debug("OnDemandNzbInputStream closed");
-    }
-
-    public synchronized long seek(long offset, int seekOrigin) throws IOException {
-        long newPos;
-        if (seekOrigin == 0) { // SEEK_SET
-            newPos = offset;
-        } else if (seekOrigin == 1) { // SEEK_CUR
-            newPos = position + offset;
-        } else if (seekOrigin == 2) { // SEEK_END
-            newPos = length - offset;
-        } else {
-            throw new IOException("Unsupported seek origin: " + seekOrigin);
-        }
-
-        if (newPos < 0) {
-            throw new IOException("Seek before begin: " + newPos);
-        }
-        if (newPos > length) {
-            newPos = length;
-        }
-
-        if (moveInsideCurrentChunk(newPos)) {
-            log.debug("Moved to position {} inside segment {}", position, currentChunkSegment);
-            return position;
-        }
-
-        log.debug("Seeking from position {} (segment {}) to {} (segment {})", position,
-                currentChunkSegment, newPos, segmentOf(newPos));
-        restartAt(newPos);
-        return position;
+        stopWorker();
+        log.debug("{} closed at position {}", file.filename(), position);
     }
 
     /**
-     * Moves to the target position in the chunk that is in memory.
+     * Starts a worker at the given position.
      *
-     * <p>The function moves the cursor forward and also rearward. It does not download data. It
-     * returns false when the target position is in a different segment. The caller must then use
-     * {@link #restartAt(long)}.</p>
+     * <p>This function does not wait for the worker of before. That worker stops when it sees its
+     * flag, and it writes in its own queue. Thus a move of the cursor gives the first bytes of the
+     * new position after one download, and not after two downloads.</p>
      */
-    private boolean moveInsideCurrentChunk(long target) {
-        if (currentChunk == null || currentChunkSegment < 0) {
-            return false;
-        }
-        if (segmentOf(target) != currentChunkSegment) {
-            return false;
-        }
-        int offsetInChunk = offsetInSegment(target, currentChunkSegment);
-        if (offsetInChunk < 0 || offsetInChunk > currentChunk.length) {
-            return false;
-        }
-        chunkPos = offsetInChunk;
-        position = target;
-        return true;
+    private void startWorkerAt(long startPosition) {
+        stopWorker();
+
+        bufferQueue = new LinkedBlockingQueue<>();
+        endOfSegments = new AtomicBoolean(false);
+        running = new AtomicBoolean(true);
+        currentBytes = null;
+        cursor = 0;
+
+        Thread worker = new Thread(new DownloadSegmentsWorker(startPosition, file, bufferQueue,
+                endOfSegments, running, fetcher, background), "segment-download-worker");
+        worker.setDaemon(true);
+        worker.start();
     }
 
-    /** Stops the worker, then starts a new worker at the segment that holds the target position. */
-    private void restartAt(long target) {
-        stopAndClearDownloadThread();
-        // The worker sets endOfSegments when it stops, also when this class stops it. Without this
-        // reset the next read() gives -1 and the stream stays at the end of the file.
-        endOfSegments.set(false);
-        position = target;
-        int segment = segmentOf(target);
-        chunkPos = offsetInSegment(target, segment);
-        startWorkerAt(segment);
-    }
-
-    private void startWorkerAt(int segment) {
-        segmentIndex.set(segment);
-        nextChunkSegment = segment;
-        running.set(true);
-        runningTask = executor.submit(
-                workerFactory.create(segmentIndex, file, bufferQueue, endOfSegments, running));
-    }
-
-    private void stopAndClearDownloadThread() {
-        if (runningTask != null) {
-            running.set(false);
-            try {
-                boolean interrupted = runningTask.get();
-                log.debug("Download thread terminated: {}", interrupted);
-            } catch (ExecutionException | InterruptedException e) {
-                log.warn("Interrupted while waiting for download thread to terminate", e);
-            }
+    /** Tells the worker to stop. It does not wait for it. */
+    private void stopWorker() {
+        running.set(false);
+        for (Future<byte[]> segment : bufferQueue) {
+            segment.cancel(true);
         }
         bufferQueue.clear();
-        currentChunk = null;
-        currentChunkSegment = -1;
     }
 }

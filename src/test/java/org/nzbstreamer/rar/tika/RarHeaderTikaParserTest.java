@@ -100,6 +100,114 @@ class RarHeaderTikaParserTest {
         assertEquals(3, archive.streamableEntries().size(), "the directory is not streamable");
     }
 
+    /**
+     * A stream that fails when a caller reads a byte of the data of a file. Only skip is permitted
+     * across those bytes.
+     */
+    private static final class PayloadGuardStream extends java.io.InputStream {
+
+        private final byte[] data;
+        private final List<long[]> forbidden;
+        private long position;
+        private int readCalls;
+
+        PayloadGuardStream(byte[] data, List<long[]> forbidden) {
+            this.data = data;
+            this.forbidden = forbidden;
+        }
+
+        private void checkNotPayload(long from, long length) {
+            for (long[] range : forbidden) {
+                if (Math.max(from, range[0]) < Math.min(from + length, range[0] + range[1])) {
+                    throw new AssertionError("the parser read the data of a file at offset " + from
+                            + "; TikaInputStream.skip reads the bytes, thus the parser must use the"
+                            + " stream of RarSourceStream");
+                }
+            }
+        }
+
+        @Override
+        public int read() {
+            if (position >= data.length) {
+                return -1;
+            }
+            checkNotPayload(position, 1);
+            readCalls++;
+            return data[(int) position++] & 0xFF;
+        }
+
+        @Override
+        public int read(byte[] destination, int offset, int length) {
+            if (position >= data.length) {
+                return -1;
+            }
+            int count = (int) Math.min(length, data.length - position);
+            checkNotPayload(position, count);
+            readCalls++;
+            System.arraycopy(data, (int) position, destination, offset, count);
+            position += count;
+            return count;
+        }
+
+        @Override
+        public long skip(long count) {
+            long actual = Math.min(count, data.length - position);
+            position += actual;
+            return actual;
+        }
+
+        @Override
+        public boolean markSupported() {
+            return true;
+        }
+
+        @Override
+        public synchronized void mark(int readLimit) {
+        }
+
+        @Override
+        public synchronized void reset() {
+            position = 0;
+        }
+    }
+
+    @Test
+    @DisplayName("the parser uses the stream of the caller, thus the data of the files stays unread")
+    void usesTheStreamOfTheCallerAndSkipsTheData() throws Exception {
+        byte[] data;
+        try (InputStream in = fixture("rar5-multi.rar")) {
+            data = in.readAllBytes();
+        }
+
+        List<long[]> payloads = new java.util.ArrayList<>();
+        for (var block : new org.nzbstreamer.rar.RarHeaderParser()
+                .parse(new java.io.ByteArrayInputStream(data)).blocks()) {
+            if (block.dataSize() > 0) {
+                payloads.add(new long[]{block.dataOffset(), block.dataSize()});
+            }
+        }
+
+        RarArchiveCollector collector = new RarArchiveCollector();
+        ParseContext context = new ParseContext();
+        context.set(RarArchiveCollector.class, collector);
+
+        // Both streams read the same bytes. The TikaInputStream is the stream of the parameter,
+        // and its skip reads the data. The guard is the stream of the caller, and its skip moves
+        // the cursor. A parser that uses the wrong one reads the data and fails here.
+        PayloadGuardStream guard = new PayloadGuardStream(data, payloads);
+        context.set(RarSourceStream.class, new RarSourceStream(guard));
+
+        try (org.apache.tika.io.TikaInputStream tikaStream =
+                     org.apache.tika.io.TikaInputStream.get(guard)) {
+            new RarHeaderTikaParser().parse(tikaStream, new BodyContentHandler(), new Metadata(),
+                    context);
+        }
+
+        assertNotNull(collector.archive(), "the parser must have read the headers");
+        assertEquals(4, collector.archive().entries().size());
+        assertTrue(guard.readCalls > 0, "the parser must read the headers from the guard stream");
+    }
+
     @Test
     @DisplayName("Tika selects the parser from the content, also with a name that gives no type")
     void routesByContentAndNotByName() throws Exception {

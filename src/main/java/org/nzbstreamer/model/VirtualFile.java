@@ -1,11 +1,33 @@
 package org.nzbstreamer.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderColumn;
+import jakarta.persistence.Table;
 import org.nzbstreamer.streams.VirtualFileInputStream;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
+/**
+ * A file that a player can read. Its bytes are in one post or in many posts.
+ *
+ * <p>The file gives a continuous sequence of bytes, from 0 to {@code size - 1}. The function
+ * {@link #locate(long)} changes a position of the file into a position in a segment. Thus a caller
+ * does not know the chunks, the volumes or the archive.</p>
+ *
+ * <p>The chunks use the fetch type EAGER. Thus a file that comes from the database gives its bytes
+ * also outside a session, and a file that a caller makes with {@code new} works in the same way.
+ * The application can use a file before it saves it, or without a save operation.</p>
+ */
 @Entity
 @Table(name = "virtual_files")
 public class VirtualFile {
@@ -14,60 +36,116 @@ public class VirtualFile {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    private Long size;
     private String filename;
-
-    @ManyToOne(cascade = CascadeType.ALL)
-    private NzbFile nzbFile;
 
     private String contentType;
 
-    @Column(name = "\"offset\"")
-    private long offset = 0;
+    private Long size;
+
+    // JoinColumn and not a table of the relation: the order column then goes in the table of the
+    // chunks.
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "virtual_file_id")
+    @OrderColumn(name = "chunk_order")
+    private List<VirtualFileChunk> chunks = new ArrayList<>();
 
     public VirtualFile() {
     }
 
+    /**
+     * Makes a file of all the bytes of one post.
+     *
+     * @param size     the number of bytes of the post
+     * @param filename the name of the file
+     * @param nzbFile  the post
+     */
     public VirtualFile(long size, String filename, NzbFile nzbFile) {
-        this.nzbFile = nzbFile;
-        this.size = size;
         this.filename = filename;
+        this.size = size;
+        this.chunks.add(new VirtualFileChunk(nzbFile, 0, 0, size, 0,
+                nzbFile.getSegments().getSegment().size() - 1));
     }
 
-    public long getSize() {
-        return size;
+    /** Makes a file of the given parts of one post or of many posts. */
+    public VirtualFile(String filename, String contentType, List<VirtualFileChunk> chunks) {
+        this.filename = filename;
+        this.contentType = contentType;
+        this.chunks = new ArrayList<>(chunks);
+        this.size = chunks.stream().mapToLong(VirtualFileChunk::getLength).sum();
     }
 
-    public String filename() {
-        return filename;
+    /**
+     * The segment that holds the byte at the given position of the file.
+     *
+     * @param segment            the segment to download
+     * @param group              the newsgroup of that segment
+     * @param byteInSegment      the position of the byte in that segment
+     * @param bytesLeftInSegment the number of bytes of the file after that position. The value
+     *                           stops at the end of the segment and at the end of the chunk.
+     */
+    public record Location(Segment segment, String group, int byteInSegment,
+                           int bytesLeftInSegment) {
     }
 
-    public NzbFile getNzbFile() {
-        return nzbFile;
+    /** Returns true when a byte is at this position. */
+    public boolean hasNext(long filePosition) {
+        return size != null && filePosition >= 0 && filePosition < size;
+    }
+
+    /**
+     * Finds the segment for a position of the file.
+     *
+     * @throws IllegalArgumentException if no byte is at this position
+     */
+    public Location locate(long filePosition) {
+        if (!hasNext(filePosition)) {
+            throw new IllegalArgumentException("position " + filePosition + " is not in " + filename
+                    + " (size " + size + ")");
+        }
+
+        for (VirtualFileChunk chunk : chunks) {
+            if (!chunk.contains(filePosition)) {
+                continue;
+            }
+
+            // The offset of the chunk applies to its first segment. Thus the position in the
+            // segments of the chunk is the offset plus the position in the chunk.
+            long inSegments = chunk.getOffset() + (filePosition - chunk.getFileStart());
+            long bytesLeftInChunk = chunk.fileEnd() - filePosition;
+
+            for (Segment segment : chunk.segments()) {
+                if (inSegments < segment.getSize()) {
+                    long leftInSegment = segment.getSize() - inSegments;
+                    int usable = (int) Math.min(leftInSegment, bytesLeftInChunk);
+                    return new Location(segment, chunk.group(), (int) inSegments, usable);
+                }
+                inSegments -= segment.getSize();
+            }
+            throw new IllegalStateException("the segments of the chunk do not hold position "
+                    + filePosition + " of " + filename);
+        }
+        throw new IllegalStateException("no chunk holds position " + filePosition + " of " + filename);
+    }
+
+    /** The number of segments of all the chunks. */
+    public int segmentCount() {
+        return chunks.stream().mapToInt(chunk -> chunk.segments().size()).sum();
     }
 
     public InputStream getInputStream() throws Exception {
         return new VirtualFileInputStream(this);
     }
 
-    public String getContentType() {
-        return contentType;
-    }
-
-    public void setContentType(String contentType) {
-        this.contentType = contentType;
-    }
-
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
+    public long getSize() {
+        return size == null ? 0 : size;
     }
 
     public void setSize(Long size) {
         this.size = size;
+    }
+
+    public String filename() {
+        return filename;
     }
 
     public String getFilename() {
@@ -78,19 +156,27 @@ public class VirtualFile {
         this.filename = filename;
     }
 
-    public void setNzbFile(NzbFile nzbFile) {
-        this.nzbFile = nzbFile;
+    public String getContentType() {
+        return contentType;
     }
 
-    public long getOffset() {
-        return offset;
+    public void setContentType(String contentType) {
+        this.contentType = contentType;
     }
 
-    public void setOffset(long offset) {
-        this.offset = offset;
+    public List<VirtualFileChunk> getChunks() {
+        return chunks;
     }
 
-    public int getSegmentAtPosition(long position) {
-        return nzbFile.getSegmentAtPosition(offset + position);
+    public void setChunks(List<VirtualFileChunk> chunks) {
+        this.chunks = chunks;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
     }
 }

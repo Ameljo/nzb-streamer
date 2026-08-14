@@ -1,27 +1,24 @@
 package org.nzbstreamer.transformers;
 
 import org.nzbstreamer.model.Nzb;
-import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.VirtualFile;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 public class NzbTransformerFactory {
 
-    private final NzbTransformer<String> nzbToStringTransformer = new NzbToStringTransformer();
-    private final NzbFileTransformer<VirtualFile> tikaNzbFileTransformer = new TikaNzbFileTransformer();
-
-    public NzbTransformer<String> getTransformer(Nzb nzb) {
-        return nzbToStringTransformer;
-    }
+    private final NzbTransformer<List<VirtualFile>> tikaNzbFileTransformer =
+            new TikaNzbFileTransformer();
 
     /**
-     * Gives the transformer for one file of an NZB.
+     * Gives the transformer for an NZB.
      *
-     * <p>There is one transformer for all the files. Tika reads the content of the file and selects
-     * the parser. Thus this factory does not examine the name of the file.</p>
+     * <p>There is one transformer for all the files. Tika reads the content of each post and
+     * selects the parser. Thus this factory does not examine the name of a post.</p>
      */
-    public NzbFileTransformer<VirtualFile> getTransformer(NzbFile file) {
+    public NzbTransformer<List<VirtualFile>> getTransformer(Nzb nzb) {
         return tikaNzbFileTransformer;
     }
 }

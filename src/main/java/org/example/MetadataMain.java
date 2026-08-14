@@ -37,32 +37,21 @@ public class MetadataMain {
         context.refresh();
 
         Nzb nzb = NzbParserFactory.createParser().parse(new FileInputStream("downloads/test2.nzb"));
-        NzbFileTransformer<VirtualFile> transformer = new TikaNzbFileTransformer();
-
-        // A volume of an archive gives the files in it. A volume with the continuation of a file
-        // gives nothing. Thus this example uses the first file of the NZB that gives a result.
-        VirtualFile vf = null;
-        for (NzbFile nzbFile : nzb.getFiles()) {
-            List<VirtualFile> files = transformer.transform(nzbFile);
-            if (files != null && !files.isEmpty()) {
-                vf = files.getFirst();
-                break;
-            }
-        }
-        if (vf == null) {
+        // One transformer reads all the NZB, because a file of an archive can continue from one
+        // volume to the next volume.
+        List<VirtualFile> files = new TikaNzbFileTransformer().transform(nzb);
+        if (files.isEmpty()) {
             log.warn("no virtual file in the NZB");
             return;
         }
-        Tika tika = new Tika();
-        try(InputStream is = vf.getInputStream()) {
-            // Extract and print metadata using Tika
-            is.available();
+
+        VirtualFile vf = files.getFirst();
+        try (InputStream is = vf.getInputStream()) {
             Metadata metadata = extractMetadata(is);
-            System.out.println("Tika metadata for file: "  + vf.filename());
+            System.out.println("Tika metadata for file: " + vf.filename());
             for (String name : metadata.names()) {
                 System.out.println(name + ": " + metadata.get(name));
             }
-
         }
     }
 

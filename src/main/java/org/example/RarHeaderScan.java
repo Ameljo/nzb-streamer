@@ -45,6 +45,12 @@ import java.nio.file.Path;
  *
  * <p>To examine the structure in a debugger, put a breakpoint on the first line of
  * {@link #report}.</p>
+ *
+ * <p>To see the time of each step of a download, add this option to the JVM:</p>
+ *
+ * <pre>
+ * -Dlogback.configurationFile=logback-trace.xml
+ * </pre>
  */
 public final class RarHeaderScan {
 

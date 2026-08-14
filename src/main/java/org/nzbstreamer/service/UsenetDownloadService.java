@@ -124,13 +124,22 @@ public class UsenetDownloadService {
     public byte[] downloadAndDecodeSegment(Segment segment, String group) throws IOException {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
 
+        // TRACE: this method makes a new connection for each segment. The times below show the
+        // cost of each step: the connection, the selection of the group and the transfer.
+        long connectStart = System.nanoTime();
         NNTPClient client = clientFactory.createClient();
+        long connectMs = millisecondsSince(connectStart);
+        long groupMs;
+        long transferMs;
         try {
+            long groupStart = System.nanoTime();
             if (!client.selectNewsgroup(group)) {
                 System.err.println(client.getReplyString());
                 throw new IOException("Failed to select group: " + group);
             }
+            groupMs = millisecondsSince(groupStart);
 
+            long transferStart = System.nanoTime();
             Reader reader = client.retrieveArticle(messageId);
             if (reader == null) {
                 throw new IOException("Article not found: " + messageId +
@@ -139,14 +148,25 @@ public class UsenetDownloadService {
 
             MultiPartDecoder decoder = new MultiPartDecoder();
             byte[] decoded = decoder.decode(reader);
+            transferMs = millisecondsSince(transferStart);
             log.debug("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
+            log.debug("segment {}: {} bytes in {} ms = connect {} ms + group {} ms + transfer {} ms",
+                    segment.getNumber(), decoded.length, connectMs + groupMs + transferMs, connectMs,
+                    groupMs, transferMs);
 
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             bos.write(decoded);
             return bos.toByteArray();
         } finally {
+            long disconnectStart = System.nanoTime();
             client.disconnect();
+            log.debug("segment {}: disconnect in {} ms", segment.getNumber(),
+                    millisecondsSince(disconnectStart));
         }
+    }
+
+    private static long millisecondsSince(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
     public void populateNzbFileSizes(NzbFile file) throws Exception {
