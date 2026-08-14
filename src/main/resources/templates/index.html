@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>NZB Streamer</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+        header { background: #1a1d2e; border-bottom: 1px solid #2d3148; padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+        header h1 { font-size: 1.4rem; font-weight: 700; color: #7c8cf8; letter-spacing: 0.5px; }
+        header span { color: #64748b; font-size: 0.9rem; }
+
+        main { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+        /* Upload card */
+        .upload-card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
+        .upload-card h2 { font-size: 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+        .upload-form { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .file-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #252840; border: 1px dashed #4a5080; border-radius: 8px; padding: 10px 20px; color: #94a3b8; transition: all 0.2s; }
+        .file-label:hover { border-color: #7c8cf8; color: #7c8cf8; }
+        .file-label input[type=file] { display: none; }
+        #chosen-file { color: #64748b; font-size: 0.85rem; }
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #7c8cf8; color: #fff; }
+        .btn-primary:hover { background: #6470e8; }
+        .btn-primary:disabled { background: #3d4270; color: #64748b; cursor: not-allowed; }
+        .btn-danger { background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 6px 12px; font-size: 0.8rem; }
+        .btn-danger:hover { background: #ef4444; color: #fff; }
+        .btn-play { background: transparent; border: 1px solid #7c8cf8; color: #7c8cf8; padding: 6px 12px; font-size: 0.8rem; }
+        .btn-play:hover { background: #7c8cf8; color: #fff; }
+
+        /* Toast */
+        #toast { position: fixed; top: 24px; right: 24px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 20px; font-size: 0.9rem; display: none; z-index: 1000; transition: opacity 0.3s; }
+        #toast.success { border-color: #22c55e; color: #22c55e; }
+        #toast.error { border-color: #ef4444; color: #ef4444; }
+
+        /* Files section */
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .section-header h2 { font-size: 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+        .badge { background: #252840; border: 1px solid #2d3148; color: #7c8cf8; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: #475569; }
+        .empty-state svg { margin-bottom: 12px; opacity: 0.3; }
+
+        /* Grid */
+        .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .file-card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; overflow: hidden; transition: border-color 0.2s; }
+        .file-card:hover { border-color: #4a5080; }
+        .file-card-preview { height: 160px; background: #0f1117; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .file-card-preview video, .file-card-preview audio-thumb { width: 100%; height: 100%; object-fit: cover; }
+        .media-icon { font-size: 3rem; opacity: 0.15; }
+        .type-badge { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; color: #94a3b8; }
+        .file-card-body { padding: 14px; }
+        .file-name { font-weight: 600; font-size: 0.9rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+        .file-meta { font-size: 0.75rem; color: #64748b; margin-bottom: 12px; }
+        .file-actions { display: flex; gap: 8px; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 500; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 16px; padding: 24px; max-width: 90vw; width: 860px; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .modal-title { font-weight: 600; color: #e2e8f0; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 700px; }
+        .modal-close { background: none; border: none; color: #64748b; font-size: 1.4rem; cursor: pointer; line-height: 1; }
+        .modal-close:hover { color: #e2e8f0; }
+        #media-player { width: 100%; border-radius: 8px; max-height: 70vh; background: #000; }
+    </style>
+</head>
+<body>
+
+<header>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c8cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+    </svg>
+    <h1>NZB Streamer</h1>
+    <span>WebDAV Media Server</span>
+</header>
+
+<main>
+    <!-- Upload -->
+    <div class="upload-card">
+        <h2>Add NZB File</h2>
+        <form class="upload-form" id="upload-form" enctype="multipart/form-data">
+            <label class="file-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Choose .nzb file
+                <input type="file" id="nzb-file" name="file" accept=".nzb" required/>
+            </label>
+            <span id="chosen-file">No file selected</span>
+            <button type="submit" class="btn btn-primary" id="upload-btn" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload &amp; Process
+            </button>
+        </form>
+    </div>
+
+    <!-- File list -->
+    <div class="section-header">
+        <h2>Virtual Files</h2>
+        <span class="badge" id="file-count" th:text="${#lists.size(files)}">0</span>
+    </div>
+
+    <div id="files-container">
+        <div th:if="${#lists.isEmpty(files)}" class="empty-state" id="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>No virtual files yet. Upload an NZB file to get started.</p>
+        </div>
+
+        <div class="files-grid" th:unless="${#lists.isEmpty(files)}" id="files-grid">
+            <div class="file-card" th:each="file : ${files}" th:attr="data-id=${file.id}, data-name=${file.filename}, data-type=${file.contentType}">
+                <div class="file-card-preview">
+                    <span class="type-badge" th:text="${file.contentType ?: 'unknown'}">unknown</span>
+                    <!-- Inline thumbnail for video -->
+                    <span th:if="${file.contentType != null and file.contentType.startsWith('video/')}" class="media-icon">🎬</span>
+                    <span th:if="${file.contentType != null and file.contentType.startsWith('audio/')}" class="media-icon">🎵</span>
+                    <span th:if="${file.contentType != null and file.contentType.startsWith('image/')}" class="media-icon">🖼️</span>
+                    <span th:if="${file.contentType == null or (!file.contentType.startsWith('video/') and !file.contentType.startsWith('audio/') and !file.contentType.startsWith('image/'))}" class="media-icon">📄</span>
+                </div>
+                <div class="file-card-body">
+                    <div class="file-name" th:text="${file.filename}">filename.mkv</div>
+                    <div class="file-meta" th:text="${#numbers.formatDecimal(file.size / 1048576.0, 1, 'COMMA', 2, 'POINT')} + ' MB'">0 MB</div>
+                    <div class="file-actions">
+                        <button th:if="${file.contentType != null and (file.contentType.startsWith('video/') or file.contentType.startsWith('audio/') or file.contentType.startsWith('image/'))}"
+                                class="btn btn-play"
+                                th:attr="data-id=${file.id}, data-name=${file.filename}, data-type=${file.contentType}"
+                                onclick="openPlayer(this)">
+                            ▶ Play
+                        </button>
+                        <button class="btn btn-danger"
+                                th:attr="data-id=${file.id}"
+                                onclick="deleteFile(this)">
+                            🗑 Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Media player modal -->
+<div class="modal-overlay" id="player-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="player-title"></span>
+            <button class="modal-close" onclick="closePlayer()">✕</button>
+        </div>
+        <video id="media-player" controls autoplay></video>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script th:inline="javascript">
+    // File input label update
+    document.getElementById('nzb-file').addEventListener('change', function () {
+        const name = this.files[0] ? this.files[0].name : 'No file selected';
+        document.getElementById('chosen-file').textContent = name;
+        document.getElementById('upload-btn').disabled = !this.files[0];
+    });
+
+    // Upload form
+    document.getElementById('upload-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn = document.getElementById('upload-btn');
+        btn.disabled = true;
+        btn.textContent = 'Processing…';
+        const formData = new FormData(this);
+        try {
+            const res = await fetch('/api/nzb/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Processed ' + data.filesCount + ' file(s) from ' + data.filename, 'success');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showToast(data.message || 'Upload failed', 'error');
+            }
+        } catch (err) {
+            showToast('Network error: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '&#8679; Upload &amp; Process';
+        }
+    });
+
+    // Delete
+    async function deleteFile(btn) {
+        const id = btn.dataset.id;
+        if (!confirm('Delete this file?')) return;
+        try {
+            const res = await fetch('/api/files/' + id, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                const card = btn.closest('.file-card');
+                card.remove();
+                updateCount();
+                showToast('File deleted', 'success');
+            } else {
+                showToast(data.message || 'Delete failed', 'error');
+            }
+        } catch (err) {
+            showToast('Network error: ' + err.message, 'error');
+        }
+    }
+
+    function updateCount() {
+        const cards = document.querySelectorAll('.file-card');
+        document.getElementById('file-count').textContent = cards.length;
+        if (cards.length === 0) {
+            const grid = document.getElementById('files-grid');
+            if (grid) grid.remove();
+            const container = document.getElementById('files-container');
+            container.innerHTML = '<div class="empty-state"><p>No virtual files yet. Upload an NZB file to get started.</p></div>';
+        }
+    }
+
+    // Player
+    function openPlayer(btn) {
+        const id = btn.dataset.id;
+        const name = btn.dataset.name;
+        const type = btn.dataset.type;
+        const player = document.getElementById('media-player');
+        document.getElementById('player-title').textContent = name;
+
+        player.src = '/api/files/stream/' + id;
+
+        if (type && type.startsWith('audio/')) {
+            player.style.height = '60px';
+        } else {
+            player.style.height = '';
+        }
+        document.getElementById('player-modal').classList.add('open');
+    }
+
+    function closePlayer() {
+        const player = document.getElementById('media-player');
+        player.pause();
+        player.src = '';
+        document.getElementById('player-modal').classList.remove('open');
+    }
+
+    document.getElementById('player-modal').addEventListener('click', function (e) {
+        if (e.target === this) closePlayer();
+    });
+
+    // Toast
+    function showToast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = type;
+        t.style.display = 'block';
+        t.style.opacity = '1';
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => {
+            t.style.opacity = '0';
+            setTimeout(() => { t.style.display = 'none'; }, 300);
+        }, 3500);
+    }
+</script>
+</body>
+</html>

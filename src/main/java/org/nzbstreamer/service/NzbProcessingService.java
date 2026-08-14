@@ -11,9 +11,7 @@ import org.nzbstreamer.parser.NzbParser;
 import org.nzbstreamer.parser.NzbParserFactory;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.repository.VirtualResourceRepository;
-import org.nzbstreamer.transformers.NzbFileToVirtualFileTransformer;
 import org.nzbstreamer.transformers.NzbFileTransformer;
-import org.nzbstreamer.transformers.NzbRarFileToVirtualFileTransformer;
 import org.nzbstreamer.transformers.NzbTransformerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -124,8 +122,7 @@ public class NzbProcessingService {
             log.info("Successfully parsed NZB file: {} with {} files", filename, nzb.getFiles().size());
 
             for (NzbFile nzbFile : nzb.getFiles()) {
-                NzbRarFileToVirtualFileTransformer transformer = new NzbRarFileToVirtualFileTransformer();
-                transformer.transform(nzbFile);
+                nzbTransformerFactory.getTransformer(nzbFile).transform(nzbFile);
             }
             return nzb;
         } catch (Exception e) {

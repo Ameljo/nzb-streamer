@@ -37,6 +37,7 @@ build/
 application-local.properties
 application-*.properties
 !application.properties
+nntp-local.properties
 *.env
 .env
 .env.local

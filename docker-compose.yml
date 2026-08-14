@@ -1,0 +1,16 @@
+services:
+  backend:
+    build: .
+    container_name: nzb-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:5432/nzb
+      SPRING_DATASOURCE_USERNAME: nzb
+      SPRING_DATASOURCE_PASSWORD: nzb
+      USENET_SERVER: news.eweka.nl
+      USENET_PORT: 119
+      USENET_USERNAME: ${USENET_USERNAME}
+      USENET_PASSWORD: ${USENET_PASSWORD}
+    restart: unless-stopped

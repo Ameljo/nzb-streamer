@@ -9,12 +9,14 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.annotation.Transactional;
 import org.nzbstreamer.webdav.VirtualResourceFactory;
 
 @SpringBootApplication(scanBasePackages = "org.nzbstreamer")
 @EntityScan(basePackages = {"org.nzbstreamer.model"})
+@EnableConfigurationProperties
 public class Main {
     private static final Logger logger = LogManager.getLogger(Main.class.getName());
 

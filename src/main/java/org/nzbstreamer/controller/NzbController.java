@@ -1,21 +1,14 @@
 package org.nzbstreamer.controller;
 
-import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.tika.Tika;
-import org.example.NNTPClientFactory;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.NzbFile;
-import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.parser.NzbParser;
 import org.nzbstreamer.parser.NzbParserFactory;
 import org.nzbstreamer.service.NzbProcessingService;
 import org.nzbstreamer.service.UsenetDownloadService;
-import org.nzbstreamer.transformers.NzbFileToVirtualFileTransformer;
-import org.nzbstreamer.transformers.NzbFileTransformer;
-import org.nzbstreamer.transformers.NzbRarFileToVirtualFileTransformer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,9 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -37,6 +28,9 @@ public class NzbController {
 
     @Autowired
     private NzbProcessingService nzbProcessingService;
+
+    @Autowired
+    private UsenetDownloadService usenetDownloadService;
 
     /**
      * Upload and process an NZB file via multipart form
@@ -230,7 +224,6 @@ public class NzbController {
             Nzb nzb = parser.parse(inputStream);
 
 
-            UsenetDownloadService usenetDownloadService = new UsenetDownloadService(NNTPClientFactory.getAuthenticatedClient());
             int i=1;
             for (NzbFile nzbFile : nzb.getFiles()) {
                 if (i > 1)

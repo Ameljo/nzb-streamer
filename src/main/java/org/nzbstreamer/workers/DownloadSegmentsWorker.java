@@ -1,9 +1,8 @@
 package org.nzbstreamer.workers;
 
-import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.Logger;
-import org.example.NNTPClientFactory;
 import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.service.UsenetDownloadService;
 
 import java.io.IOException;
@@ -24,7 +23,6 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
     private final AtomicBoolean endOfSegments;
     private final AtomicBoolean running;
     private final UsenetDownloadService downloadService;
-    private final NNTPClient nntpClient;
 
     public DownloadSegmentsWorker(AtomicInteger segmentIndex, VirtualFile file,
                                   BlockingQueue<byte[]> bufferQueue,
@@ -35,13 +33,7 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
         this.bufferQueue = bufferQueue;
         this.endOfSegments = endOfSegments;
         this.running = running;
-
-        try {
-            nntpClient = NNTPClientFactory.getAuthenticatedClient();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create NNTP client", e);
-        }
-        this.downloadService = new UsenetDownloadService(nntpClient);
+        this.downloadService = ApplicationContextUtil.getBean(UsenetDownloadService.class);
     }
 
     @Override
@@ -51,8 +43,6 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
         } catch (Exception e) {
             log.error("Unexpected error in DownloadSegmentsWorker", e);
             return false;
-        }finally {
-            cleanup();
         }
     }
 
@@ -103,21 +93,9 @@ public class DownloadSegmentsWorker implements Callable<Boolean> {
                     throw e;
                 }
                 log.warn("Retry {}/{} for segment {} due to: {}", attempt, maxRetries, segmentIndex, e.getMessage());
-                Thread.sleep(100L * attempt); // exponential backoff
+                Thread.sleep(100L * attempt);
             }
         }
         throw new IOException("Max retries exceeded for segment " + segmentIndex);
-    }
-
-    private void cleanup() {
-        try {
-            if (nntpClient != null && nntpClient.isConnected()) {
-                nntpClient.logout();
-                nntpClient.disconnect();
-                log.debug("NNTP client disconnected successfully");
-            }
-        } catch (IOException e) {
-            log.error("Error disconnecting from NNTP server", e);
-        }
     }
 }
