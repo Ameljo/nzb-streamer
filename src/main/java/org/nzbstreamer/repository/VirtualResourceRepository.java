@@ -22,4 +22,10 @@ public interface VirtualResourceRepository extends CrudRepository<VirtualResourc
 
     @Query("SELECT vr FROM VirtualResource vr WHERE vr.parent.id = ?1")
     List<VirtualResource> findByParentId(UUID parentId);
+
+    @Query("SELECT vr FROM VirtualResource vr WHERE vr.file.id = ?1")
+    VirtualResource findByFileId(UUID fileId);
+
+    @Query("SELECT vr FROM VirtualResource vr WHERE vr.isFolder = false AND vr.file IS NOT NULL")
+    List<VirtualResource> findAllFileResources();
 }

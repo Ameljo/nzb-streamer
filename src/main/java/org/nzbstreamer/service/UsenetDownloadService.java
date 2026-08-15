@@ -1,67 +1,76 @@
 package org.nzbstreamer.service;
 
 import org.apache.logging.log4j.LogManager;
-import org.example.NNTPClientFactory;
-import org.nzbstreamer.decoder.records.YencHeader;
-import org.nzbstreamer.decoder.records.YencPartInfo;
-import org.nzbstreamer.utils.NzbUtils;
 import org.apache.commons.net.nntp.NNTPClient;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.decoder.MultiPartDecoder;
+import org.nzbstreamer.decoder.records.YencHeader;
+import org.nzbstreamer.decoder.records.YencPartInfo;
 import org.nzbstreamer.model.DownloadResult;
 import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.Segment;
+import org.nzbstreamer.utils.NzbUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 
+@Service
 public class UsenetDownloadService {
     private static final Logger log = LogManager.getLogger(UsenetDownloadService.class);
-    private final NNTPClient client;
+    private static final int PARALLEL_POSTS = 8;
 
-    public UsenetDownloadService(NNTPClient client) {
-        this.client = client;
+    private final NNTPClientFactory clientFactory;
+    private final UsenetConnectionPool pool;
+
+    @Autowired
+    public UsenetDownloadService(NNTPClientFactory clientFactory, UsenetConnectionPool pool) {
+        this.clientFactory = clientFactory;
+        this.pool = pool;
     }
 
     public DownloadResult downloadFile(NzbFile file, OutputStream outputStream) throws IOException {
         var fileName = NzbUtils.sanitizeFileName(file.getSubject());
         var group = file.getGroups().getGroup().getFirst();
 
-        if (!selectNewsgroup(group)) {
-            throw new IOException("Failed to select group: " + group);
+        NNTPClient client = clientFactory.createClient();
+        try {
+            if (!client.selectNewsgroup(group)) {
+                throw new IOException("Failed to select group: " + group);
+            }
+        } finally {
+            client.disconnect();
         }
-
 
         var segments = file.getSegments().getSegment();
         System.out.println("Downloading (async): " + fileName);
 
-        final Semaphore semaphore = new Semaphore(10); // Limit to 40 concurrent tasks
+        final Semaphore semaphore = new Semaphore(10);
 
         List<Future<TempSegment>> futures;
 
         try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Callable<TempSegment>> callables = new ArrayList<>();
-            for (var segment: segments){
+            for (var segment : segments) {
                 callables.add(() -> {
                     semaphore.acquireUninterruptibly();
                     try {
                         return downloadAndDecodeSegment(segment, segments.size(), group);
-                    }catch (Exception e){
+                    } catch (Exception e) {
                         throw new RuntimeException(e);
-                    }finally {
+                    } finally {
                         semaphore.release();
                     }
                 });
             }
-
             futures = executorService.invokeAll(callables);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
 
-        // Wait for all segments and collect temp files
         Map<Integer, File> tempFiles = new TreeMap<>();
         try {
             for (Future<TempSegment> future : futures) {
@@ -73,7 +82,6 @@ public class UsenetDownloadService {
             return DownloadResult.failed(fileName, "Failed to download segment: " + e.getMessage());
         }
 
-        // Concatenate temp files into final output
         for (File temp : tempFiles.values()) {
             Files.copy(temp.toPath(), outputStream);
             temp.delete();
@@ -86,103 +94,203 @@ public class UsenetDownloadService {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
         System.out.printf("  Segment %d/%d: %s (async)%n", segment.getNumber(), totalSegments, messageId);
 
-        // Create a new NNTPClient for this thread
-        NNTPClient localClient = NNTPClientFactory.getAuthenticatedClient();
-        if(!localClient.selectNewsgroup(group)){
-            System.err.println(localClient.getReplyString());
-            throw new IOException("Failed to select group: " + group);
+        NNTPClient client = clientFactory.createClient();
+        try {
+            if (!client.selectNewsgroup(group)) {
+                System.err.println(client.getReplyString());
+                throw new IOException("Failed to select group: " + group);
+            }
+
+            Reader reader = client.retrieveArticle(messageId);
+            if (reader == null) {
+                throw new IOException("Article not found: " + messageId +
+                        " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
+            }
+
+            MultiPartDecoder decoder = new MultiPartDecoder();
+            byte[] decoded = decoder.decode(reader);
+
+            File sysTempDir = new File(System.getProperty("java.io.tmpdir"));
+            File tempDir = new File(sysTempDir, "nzb-segments");
+            if (!tempDir.exists()) tempDir.mkdirs();
+            File tempFile = File.createTempFile("segment_" + segment.getNumber() + "_", ".tmp", tempDir);
+
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(decoded);
+            }
+
+            return new TempSegment(segment.getNumber().intValue(), tempFile);
+        } finally {
+            client.disconnect();
         }
-
-        Reader reader = localClient.retrieveArticle(messageId);
-        if (reader == null) {
-            throw new IOException("Article not found: " + messageId +
-                    " (Reply: " + localClient.getReplyCode() + " - " + localClient.getReplyString() + ")");
-        }
-
-        MultiPartDecoder decoder = new MultiPartDecoder();
-        byte[] decoded = decoder.decode(reader);
-
-        // Use a dedicated temp directory in the system temp dir
-        File sysTempDir = new File(System.getProperty("java.io.tmpdir"));
-        File tempDir = new File(sysTempDir, "nzb-segments");
-        if (!tempDir.exists()) tempDir.mkdirs();
-        File tempFile = File.createTempFile("segment_" + segment.getNumber() + "_", ".tmp", tempDir);
-
-        try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-            fos.write(decoded);
-        }
-
-        localClient.disconnect();
-
-        return new TempSegment(segment.getNumber().intValue(), tempFile);
     }
 
     public byte[] downloadAndDecodeSegment(Segment segment, String group) throws IOException {
         var messageId = NzbUtils.normalizeMessageId(segment.getValue());
 
-        if(!client.selectNewsgroup(group)){
-            System.err.println(client.getReplyString());
-            throw new IOException("Failed to select group: " + group);
-        }
+        // TRACE: this method makes a new connection for each segment. The times below show the
+        // cost of each step: the connection, the selection of the group and the transfer.
+        long connectStart = System.nanoTime();
+        NNTPClient client = clientFactory.createClient();
+        long connectMs = millisecondsSince(connectStart);
+        long groupMs;
+        long transferMs;
+        try {
+            long groupStart = System.nanoTime();
+            if (!client.selectNewsgroup(group)) {
+                System.err.println(client.getReplyString());
+                throw new IOException("Failed to select group: " + group);
+            }
+            groupMs = millisecondsSince(groupStart);
 
-        Reader reader = client.retrieveArticle(messageId);
-        if (reader == null) {
-            throw new IOException("Article not found: " + messageId +
-                    " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
-        }
+            long transferStart = System.nanoTime();
+            Reader reader = client.retrieveArticle(messageId);
+            if (reader == null) {
+                throw new IOException("Article not found: " + messageId +
+                        " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
+            }
 
-        MultiPartDecoder decoder = new MultiPartDecoder();
-        byte[] decoded = decoder.decode(reader);
-        log.debug("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
+            MultiPartDecoder decoder = new MultiPartDecoder();
+            byte[] decoded = decoder.decode(reader);
+            transferMs = millisecondsSince(transferStart);
+            log.debug("Decoded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
+            log.debug("segment {}: {} bytes in {} ms = connect {} ms + group {} ms + transfer {} ms",
+                    segment.getNumber(), decoded.length, connectMs + groupMs + transferMs, connectMs,
+                    groupMs, transferMs);
 
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try  {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
             bos.write(decoded);
+            return bos.toByteArray();
         } finally {
-            bos.close();
+            long disconnectStart = System.nanoTime();
+            client.disconnect();
+            log.debug("segment {}: disconnect in {} ms", segment.getNumber(),
+                    millisecondsSince(disconnectStart));
         }
-
-        log.debug("Downloaded segment " + segment.getNumber() + " size: " + decoded.length + " Segment size: " + segment.getBytes());
-
-        return bos.toByteArray();
     }
 
+    private static long millisecondsSince(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
+    }
+
+    /** Gives the sizes of several posts at the same time. */
+    public void populateNzbFileSizes(List<NzbFile> files) throws Exception {
+        if (files.isEmpty()) {
+            return;
+        }
+        ExecutorService workers = Executors.newFixedThreadPool(
+                Math.min(PARALLEL_POSTS, files.size()), task -> {
+                    Thread thread = new Thread(task, "nzb-size");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+        try {
+            List<Future<?>> pending = new ArrayList<>();
+            for (NzbFile file : files) {
+                pending.add(workers.submit(() -> {
+                    populateNzbFileSizes(file);
+                    return null;
+                }));
+            }
+            for (Future<?> future : pending) {
+                future.get();
+            }
+        } finally {
+            workers.shutdown();
+        }
+    }
+
+    /**
+     * Gives each segment of the post its size and its position.
+     *
+     * <p>One article answers all of it. Its yEnc header gives the size of the file and its ypart
+     * line gives the size of a segment. All the segments have that size, except the last one,
+     * which holds what stays.</p>
+     */
     public void populateNzbFileSizes(NzbFile file) throws Exception {
-        var messageId = NzbUtils.normalizeMessageId(file.getSegments().getSegment().getFirst().getValue());
-        client.selectNewsgroup(file.getGroups().getGroup().getFirst());
-        var reader = client.retrieveArticle(messageId);
-        if (reader == null) {
-            throw new IOException("Article not found: " + messageId +
-                    " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
+        long startedAt = System.nanoTime();
+        List<Segment> segments = file.getSegments().getSegment();
+        String messageId = NzbUtils.normalizeMessageId(segments.getFirst().getValue());
+        String group = file.getGroups().getGroup().getFirst();
+
+        UsenetConnectionPool.PooledClient pooled = pool.borrow();
+        boolean handedOver = false;
+        YencStart start;
+        try {
+            if (!group.equals(pooled.group())) {
+                if (!pooled.client().selectNewsgroup(group)) {
+                    throw new IOException("Failed to select group: " + group);
+                }
+                pooled.group(group);
+            }
+            Reader reader = pooled.client().retrieveArticle(messageId);
+            if (reader == null) {
+                throw new IOException("Article not found: " + messageId + " (Reply: "
+                        + pooled.client().getReplyCode() + " - " + pooled.client().getReplyString() + ")");
+            }
+            start = readStart(reader);
+            // The two lines are at the start of the article. The pool reads the rest of it on
+            // another thread, thus this operation does not wait for it.
+            pool.releaseAfterDrain(pooled, reader);
+            handedOver = true;
+        } finally {
+            if (!handedOver) {
+                pool.discard(pooled);
+            }
         }
-        MultiPartDecoder decoder = new MultiPartDecoder();
-        YencHeader header = decoder.parseYencHeader(reader);
-        file.setSize(header.size());
-        reader.close();
-        reader = client.retrieveArticle(NzbUtils.normalizeMessageId(file.getSegments().getSegment().getFirst().getValue()));
-        YencPartInfo partInfo = decoder.parseYencPartInfo(reader);
+
+        if (start.header() == null) {
+            throw new IOException("No yEnc header in " + messageId);
+        }
+        long total = start.header().size();
+        long segmentSize = start.part() == null
+                ? total : start.part().end() - start.part().begin() + 1;
+        int count = segments.size();
+        long last = total - segmentSize * (count - 1);
+        if (segmentSize <= 0 || last <= 0) {
+            throw new IOException("The sizes of " + messageId + " are not usable: total " + total
+                    + ", segment " + segmentSize + ", " + count + " segments");
+        }
+
         long position = 0;
-        for (int i = 0; i < file.getSegments().getSegment().size() - 1; i++) {
-            Segment segment = file.getSegment(i);
-            segment.setSize(partInfo.end());
+        for (int i = 0; i < count; i++) {
+            Segment segment = segments.get(i);
+            segment.setSize(i == count - 1 ? last : segmentSize);
             segment.setStartPosition(position);
-            position += partInfo.end();
+            position += segment.getSize();
         }
-
-        reader = client.retrieveArticle(NzbUtils.normalizeMessageId(file.getSegments().getSegment().getLast().getValue()));
-        partInfo = decoder.parseYencPartInfo(reader);
-        long lastSegmentSize = partInfo.end() - partInfo.begin() + 1;
-        file.getSegments().getSegment().getLast().setSize(lastSegmentSize);
-        file.getSegments().getSegment().getLast().setStartPosition(position);
-
+        file.setSize(total);
+        log.debug("sizes of {}: {} segments of {} bytes, last {}, total {}, article {} in {} ms",
+                NzbUtils.sanitizeFileName(file.getSubject()), count, segmentSize, last, total,
+                messageId, (System.nanoTime() - startedAt) / 1_000_000);
     }
 
+    private record YencStart(YencHeader header, YencPartInfo part) {}
 
-
-    private boolean selectNewsgroup(String group) throws IOException {
-        var selected = client.selectNewsgroup(group);
-        log.debug("Selected group " + group + ": " + selected);
-        return selected;
+    /**
+     * Reads the ybegin line and the ypart line of an article, and stops there. The caller must
+     * give the reader to {@link UsenetConnectionPool#releaseAfterDrain}.
+     */
+    private YencStart readStart(Reader reader) throws IOException {
+        YencHeader header = null;
+        YencPartInfo part = null;
+        // Not a try with resources: a close operation reads the rest of the article. The caller
+        // gives the reader to the pool, which reads it on another thread.
+        BufferedReader lines = new BufferedReader(reader);
+        String line;
+        while ((line = lines.readLine()) != null) {
+            if (header == null && line.startsWith("=ybegin")) {
+                header = YencHeader.parse(line);
+            } else if (header != null) {
+                // The line after ybegin is the ypart line, or the first line of the data when the
+                // article holds all the file. Both mean that the answer holds nothing more.
+                if (line.startsWith("=ypart")) {
+                    part = YencPartInfo.parse(line);
+                }
+                break;
+            }
+        }
+        return new YencStart(header, part);
     }
 
     private static class TempSegment {

@@ -9,30 +9,52 @@ import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.Nzb;
+import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.parser.NzbParserFactory;
-import org.nzbstreamer.transformers.NzbFileToVirtualFileTransformer;
+import org.nzbstreamer.repository.ApplicationContextUtil;
+import org.nzbstreamer.service.NNTPClientFactory;
+import org.nzbstreamer.service.SegmentFetcher;
+import org.nzbstreamer.service.UsenetConnectionPool;
+import org.nzbstreamer.service.UsenetDownloadService;
 import org.nzbstreamer.transformers.NzbFileTransformer;
+import org.nzbstreamer.transformers.TikaNzbFileTransformer;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
+import org.springframework.core.io.support.ResourcePropertySource;
 import org.xml.sax.SAXException;
 
 import java.io.*;
+import java.util.List;
 
 public class MetadataMain {
     private static final Logger log = org.apache.logging.log4j.LogManager.getLogger(MetadataMain.class);
     public static void main(String[] args) throws Exception {
-        Nzb nzb = NzbParserFactory.createParser().parse(Main.class.getResourceAsStream("/sample6.nzb"));
-        NzbFileTransformer<VirtualFile> transformer = new NzbFileToVirtualFileTransformer();
-        VirtualFile vf = transformer.transform(nzb.getFile(1)).getFirst();
-        log.debug("test");
-        Tika tika = new Tika();
-        try(InputStream is = vf.getInputStream()) {
-            // Extract and print metadata using Tika
-            is.available();
+        // JaxbNzbParser and the segment stream get UsenetDownloadService from the static holder in
+        // ApplicationContextUtil. Thus this example needs a context with those beans.
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.getEnvironment().getPropertySources()
+                .addFirst(new ResourcePropertySource("classpath:application-local.properties"));
+        context.register(PropertySourcesPlaceholderConfigurer.class, ApplicationContextUtil.class,
+                NNTPClientFactory.class, UsenetConnectionPool.class, SegmentFetcher.class,
+                UsenetDownloadService.class);
+        context.refresh();
+
+        Nzb nzb = NzbParserFactory.createParser().parse(new FileInputStream("downloads/test2.nzb"));
+        // One transformer reads all the NZB, because a file of an archive can continue from one
+        // volume to the next volume.
+        List<VirtualFile> files = new TikaNzbFileTransformer().transform(nzb);
+        if (files.isEmpty()) {
+            log.warn("no virtual file in the NZB");
+            return;
+        }
+
+        VirtualFile vf = files.getFirst();
+        try (InputStream is = vf.getInputStream()) {
             Metadata metadata = extractMetadata(is);
-            System.out.println("Tika metadata for file: "  + vf.filename());
+            System.out.println("Tika metadata for file: " + vf.filename());
             for (String name : metadata.names()) {
                 System.out.println(name + ": " + metadata.get(name));
             }
-
         }
     }
 
