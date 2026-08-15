@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Downloads one segment and gives its bytes after the decode operation.
@@ -31,20 +33,10 @@ public class SegmentFetcher {
      *
      * @throws IOException if the segment is not on the server, or if the connection has an error
      */
-    public byte[] fetch(String messageId, String group) throws IOException, InterruptedException {
-        return fetch(messageId, group, false);
-    }
-
-    /**
-     * Gives the bytes of one segment.
-     *
-     * @param background true for work that must not stop a read operation of a player
-     * @throws IOException if the segment is not on the server, or if the connection has an error
-     */
-    public byte[] fetch(String messageId, String group, boolean background)
+    public byte[] fetch(String messageId, String group)
             throws IOException, InterruptedException {
         long startedAt = System.nanoTime();
-        UsenetConnectionPool.PooledClient pooled = pool.borrow(background);
+        UsenetConnectionPool.PooledClient pooled = pool.borrow();
         boolean healthy = false;
 
         try {
@@ -88,4 +80,59 @@ public class SegmentFetcher {
             }
         }
     }
+
+    /**
+     * Gives the first bytes of one segment, at most {@code maxBytes} of them.
+     *
+     * <p>A parser reads the first bytes of a segment and moves the cursor over the rest. This
+     * operation gives it those bytes as soon as they arrive, and a thread of the drain reads the
+     * rest of the article. Thus the caller waits for the bytes it reads, and not for a segment
+     * that holds megabytes.</p>
+     */
+    public byte[] fetchPrefix(String messageId, String group, int maxBytes)
+            throws IOException, InterruptedException {
+        long startedAt = System.nanoTime();
+        UsenetConnectionPool.PooledClient pooled = pool.borrow();
+        boolean handedOver = false;
+        boolean healthy = false;
+
+        try {
+            if (!group.equals(pooled.group())) {
+                if (!pooled.client().selectNewsgroup(group)) {
+                    throw new IOException("Failed to select group: " + group);
+                }
+                pooled.group(group);
+            }
+
+            Reader reader = pooled.client().retrieveArticle(NzbUtils.normalizeMessageId(messageId));
+            if (reader == null) {
+                throw new IOException("Segment not found: " + messageId + " (Reply: "
+                        + pooled.client().getReplyCode() + " - " + pooled.client().getReplyString() + ")");
+            }
+
+            byte[] bytes = new MultiPartDecoder().decodePrefix(reader, maxBytes);
+            if (bytes.length >= maxBytes) {
+                pool.releaseAfterDrain(pooled, reader);
+                handedOver = true;
+            } else {
+                // The segment is smaller than the limit, thus the reader is at the end of the
+                // answer and the connection stays in the pool.
+                healthy = true;
+            }
+
+            log.debug("segment {}: {} bytes of the start in {} ms{}", messageId, bytes.length,
+                    (System.nanoTime() - startedAt) / 1_000_000, handedOver ? " (prefix)" : "");
+            return bytes;
+
+        } finally {
+            if (!handedOver) {
+                if (healthy) {
+                    pool.release(pooled);
+                } else {
+                    pool.discard(pooled);
+                }
+            }
+        }
+    }
+
 }

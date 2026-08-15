@@ -33,7 +33,7 @@ class VirtualFileInputStreamTest {
         }
 
         @Override
-        public byte[] fetch(String messageId, String group, boolean background) {
+        public byte[] fetch(String messageId, String group) {
             downloaded.add(messageId);
             return VirtualFileTestData.segmentBytes(messageId);
         }

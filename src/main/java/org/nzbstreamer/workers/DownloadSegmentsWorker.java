@@ -23,22 +23,26 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * thus removes the bytes that the file does not use: the headers at the start of a volume, the
  * last blocks at the end of a volume and the bytes before the position of a move.</p>
  *
- * <p>The worker downloads {@value #MAX_AHEAD} segments at the same time, each one in a virtual
- * thread. It puts a {@link Future} of each segment in the queue, thus the sequence of the segments
- * stays correct.</p>
+ * <p>The worker downloads {@value #PARALLEL_DOWNLOADS} segments at the same time and reads up to
+ * {@value #MAX_AHEAD} segments in advance. It puts a {@link Future} of each segment in the queue,
+ * thus the sequence of the segments stays correct.</p>
  */
 public class DownloadSegmentsWorker implements Runnable {
 
     private static final Logger log = LogManager.getLogger(DownloadSegmentsWorker.class);
 
-    /**
-     * The number of segments in the queue and in the downloads.
-     *
-     * <p>Each download uses a virtual thread, thus the number of threads has no importance. The
-     * connections of {@link org.nzbstreamer.service.UsenetConnectionPool} give the limit of the
-     * downloads that run at the same time.</p>
-     */
+    /** The number of segments in the queue and in the downloads. */
     private static final int MAX_AHEAD = 16;
+
+    /**
+     * The number of downloads that run at the same time.
+     *
+     * <p>A pool of threads and not a thread for each download: the threads take the segments in
+     * the sequence of the file. A thread for each download starts them all at the same time, and
+     * the segment that the reader waits for then takes a connection after the segments that come
+     * after it.</p>
+     */
+    private static final int PARALLEL_DOWNLOADS = 8;
 
     private static final int MAX_RETRIES = 3;
     private static final int QUEUE_FULL_SLEEP_MS = 10;
@@ -49,7 +53,10 @@ public class DownloadSegmentsWorker implements Runnable {
     private final AtomicBoolean endOfSegments;
     private final AtomicBoolean running;
     private final SegmentFetcher fetcher;
-    private final boolean background;
+    private final int maxRetries;
+    private final int parallelDownloads;
+    private final int maxAhead;
+    private final String source;
 
     /**
      * @param startPosition the position of the file for the first byte
@@ -59,27 +66,33 @@ public class DownloadSegmentsWorker implements Runnable {
     public DownloadSegmentsWorker(long startPosition, VirtualFile file,
                                   BlockingQueue<Future<byte[]>> bufferQueue,
                                   AtomicBoolean endOfSegments, AtomicBoolean running,
-                                  SegmentFetcher fetcher, boolean background) {
+                                  SegmentFetcher fetcher, int maxRetries,
+                                  int parallelDownloads, String source) {
         this.startPosition = startPosition;
         this.file = file;
         this.bufferQueue = bufferQueue;
         this.endOfSegments = endOfSegments;
         this.running = running;
         this.fetcher = fetcher;
-        this.background = background;
+        this.maxRetries = maxRetries;
+        this.parallelDownloads = parallelDownloads;
+        this.maxAhead = parallelDownloads == 1 ? 1 : MAX_AHEAD;
+        this.source = source;
     }
 
     @Override
     public void run() {
-        // A virtual thread for each download. A download waits for the network and for a
-        // connection of the pool, and a virtual thread that waits uses no thread of the system.
-        ExecutorService downloads = Executors.newVirtualThreadPerTaskExecutor();
+        ExecutorService downloads = Executors.newFixedThreadPool(parallelDownloads, task -> {
+            Thread thread = new Thread(task, "download-" + source);
+            thread.setDaemon(true);
+            return thread;
+        });
         log.debug("{}: worker starts at position {}", file.filename(), startPosition);
 
         try {
             long position = startPosition;
             while (file.hasNext(position) && running.get()) {
-                while (bufferQueue.size() >= MAX_AHEAD && running.get()) {
+                while (bufferQueue.size() >= maxAhead && running.get()) {
                     Thread.sleep(QUEUE_FULL_SLEEP_MS);
                 }
                 if (!running.get()) {
@@ -108,8 +121,7 @@ public class DownloadSegmentsWorker implements Runnable {
     /** Downloads one segment and gives the bytes of the file that are in it. */
     private byte[] bytesOf(VirtualFile.Location location) throws IOException, InterruptedException {
         long startedAt = System.nanoTime();
-        // Work in the background makes one attempt: a scan without an image is not a problem.
-        byte[] bytes = downloadWithRetry(location, background ? 1 : MAX_RETRIES);
+        byte[] bytes = downloadWithRetry(location, maxRetries);
 
         // The bytes outside the location are the bytes of the archive. They stay out.
         int from = location.byteInSegment();
@@ -127,7 +139,7 @@ public class DownloadSegmentsWorker implements Runnable {
         Segment segment = location.segment();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                byte[] downloaded = fetcher.fetch(segment.getValue(), location.group(), background);
+                byte[] downloaded = fetcher.fetch(segment.getValue(), location.group());
                 if (downloaded.length != segment.getSize()) {
                     log.warn("segment {} has {} bytes, but the map says {}. The positions after it"
                                     + " are possibly wrong.", segment.getValue(), downloaded.length,

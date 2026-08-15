@@ -131,8 +131,9 @@ class RarLazinessTest {
 
         assertTrue(parsed.bytesRead() < 512,
                 "expected only header bytes, read " + parsed.bytesRead() + " of " + data.length);
-        assertTrue(parsed.bytesSkipped() > 20_000,
-                "expected the 20 KB payload to be skipped, skipped " + parsed.bytesSkipped());
+        assertTrue(parsed.bytesRead() + parsed.bytesSkipped() < 512,
+                "the file continues in the next volume, thus the walk stops at its header and does"
+                        + " not move over the payload at all");
     }
 
     @Test

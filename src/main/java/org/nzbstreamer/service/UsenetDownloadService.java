@@ -21,11 +21,15 @@ import java.util.concurrent.*;
 @Service
 public class UsenetDownloadService {
     private static final Logger log = LogManager.getLogger(UsenetDownloadService.class);
+    private static final int PARALLEL_POSTS = 8;
+
     private final NNTPClientFactory clientFactory;
+    private final UsenetConnectionPool pool;
 
     @Autowired
-    public UsenetDownloadService(NNTPClientFactory clientFactory) {
+    public UsenetDownloadService(NNTPClientFactory clientFactory, UsenetConnectionPool pool) {
         this.clientFactory = clientFactory;
+        this.pool = pool;
     }
 
     public DownloadResult downloadFile(NzbFile file, OutputStream outputStream) throws IOException {
@@ -169,40 +173,124 @@ public class UsenetDownloadService {
         return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
-    public void populateNzbFileSizes(NzbFile file) throws Exception {
-        NNTPClient client = clientFactory.createClient();
-        try {
-            var messageId = NzbUtils.normalizeMessageId(file.getSegments().getSegment().getFirst().getValue());
-            client.selectNewsgroup(file.getGroups().getGroup().getFirst());
-
-            var reader = client.retrieveArticle(messageId);
-            if (reader == null) {
-                throw new IOException("Article not found: " + messageId +
-                        " (Reply: " + client.getReplyCode() + " - " + client.getReplyString() + ")");
-            }
-            MultiPartDecoder decoder = new MultiPartDecoder();
-            YencHeader header = decoder.parseYencHeader(reader);
-            file.setSize(header.size());
-            reader.close();
-
-            reader = client.retrieveArticle(NzbUtils.normalizeMessageId(file.getSegments().getSegment().getFirst().getValue()));
-            YencPartInfo partInfo = decoder.parseYencPartInfo(reader);
-            long position = 0;
-            for (int i = 0; i < file.getSegments().getSegment().size() - 1; i++) {
-                Segment segment = file.getSegment(i);
-                segment.setSize(partInfo.end());
-                segment.setStartPosition(position);
-                position += partInfo.end();
-            }
-
-            reader = client.retrieveArticle(NzbUtils.normalizeMessageId(file.getSegments().getSegment().getLast().getValue()));
-            partInfo = decoder.parseYencPartInfo(reader);
-            long lastSegmentSize = partInfo.end() - partInfo.begin() + 1;
-            file.getSegments().getSegment().getLast().setSize(lastSegmentSize);
-            file.getSegments().getSegment().getLast().setStartPosition(position);
-        } finally {
-            client.disconnect();
+    /** Gives the sizes of several posts at the same time. */
+    public void populateNzbFileSizes(List<NzbFile> files) throws Exception {
+        if (files.isEmpty()) {
+            return;
         }
+        ExecutorService workers = Executors.newFixedThreadPool(
+                Math.min(PARALLEL_POSTS, files.size()), task -> {
+                    Thread thread = new Thread(task, "nzb-size");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+        try {
+            List<Future<?>> pending = new ArrayList<>();
+            for (NzbFile file : files) {
+                pending.add(workers.submit(() -> {
+                    populateNzbFileSizes(file);
+                    return null;
+                }));
+            }
+            for (Future<?> future : pending) {
+                future.get();
+            }
+        } finally {
+            workers.shutdown();
+        }
+    }
+
+    /**
+     * Gives each segment of the post its size and its position.
+     *
+     * <p>One article answers all of it. Its yEnc header gives the size of the file and its ypart
+     * line gives the size of a segment. All the segments have that size, except the last one,
+     * which holds what stays.</p>
+     */
+    public void populateNzbFileSizes(NzbFile file) throws Exception {
+        long startedAt = System.nanoTime();
+        List<Segment> segments = file.getSegments().getSegment();
+        String messageId = NzbUtils.normalizeMessageId(segments.getFirst().getValue());
+        String group = file.getGroups().getGroup().getFirst();
+
+        UsenetConnectionPool.PooledClient pooled = pool.borrow();
+        boolean handedOver = false;
+        YencStart start;
+        try {
+            if (!group.equals(pooled.group())) {
+                if (!pooled.client().selectNewsgroup(group)) {
+                    throw new IOException("Failed to select group: " + group);
+                }
+                pooled.group(group);
+            }
+            Reader reader = pooled.client().retrieveArticle(messageId);
+            if (reader == null) {
+                throw new IOException("Article not found: " + messageId + " (Reply: "
+                        + pooled.client().getReplyCode() + " - " + pooled.client().getReplyString() + ")");
+            }
+            start = readStart(reader);
+            // The two lines are at the start of the article. The pool reads the rest of it on
+            // another thread, thus this operation does not wait for it.
+            pool.releaseAfterDrain(pooled, reader);
+            handedOver = true;
+        } finally {
+            if (!handedOver) {
+                pool.discard(pooled);
+            }
+        }
+
+        if (start.header() == null) {
+            throw new IOException("No yEnc header in " + messageId);
+        }
+        long total = start.header().size();
+        long segmentSize = start.part() == null
+                ? total : start.part().end() - start.part().begin() + 1;
+        int count = segments.size();
+        long last = total - segmentSize * (count - 1);
+        if (segmentSize <= 0 || last <= 0) {
+            throw new IOException("The sizes of " + messageId + " are not usable: total " + total
+                    + ", segment " + segmentSize + ", " + count + " segments");
+        }
+
+        long position = 0;
+        for (int i = 0; i < count; i++) {
+            Segment segment = segments.get(i);
+            segment.setSize(i == count - 1 ? last : segmentSize);
+            segment.setStartPosition(position);
+            position += segment.getSize();
+        }
+        file.setSize(total);
+        log.debug("sizes of {}: {} segments of {} bytes, last {}, total {}, article {} in {} ms",
+                NzbUtils.sanitizeFileName(file.getSubject()), count, segmentSize, last, total,
+                messageId, (System.nanoTime() - startedAt) / 1_000_000);
+    }
+
+    private record YencStart(YencHeader header, YencPartInfo part) {}
+
+    /**
+     * Reads the ybegin line and the ypart line of an article, and stops there. The caller must
+     * give the reader to {@link UsenetConnectionPool#releaseAfterDrain}.
+     */
+    private YencStart readStart(Reader reader) throws IOException {
+        YencHeader header = null;
+        YencPartInfo part = null;
+        // Not a try with resources: a close operation reads the rest of the article. The caller
+        // gives the reader to the pool, which reads it on another thread.
+        BufferedReader lines = new BufferedReader(reader);
+        String line;
+        while ((line = lines.readLine()) != null) {
+            if (header == null && line.startsWith("=ybegin")) {
+                header = YencHeader.parse(line);
+            } else if (header != null) {
+                // The line after ybegin is the ypart line, or the first line of the data when the
+                // article holds all the file. Both mean that the answer holds nothing more.
+                if (line.startsWith("=ypart")) {
+                    part = YencPartInfo.parse(line);
+                }
+                break;
+            }
+        }
+        return new YencStart(header, part);
     }
 
     private static class TempSegment {

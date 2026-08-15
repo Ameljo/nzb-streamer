@@ -18,6 +18,9 @@ import org.nzbstreamer.rar.RarFileEntry;
 import org.nzbstreamer.rar.tika.RarArchiveCollector;
 import org.nzbstreamer.rar.tika.RarHeaderTikaParser;
 import org.nzbstreamer.rar.tika.RarSourceStream;
+import org.nzbstreamer.repository.ApplicationContextUtil;
+import org.nzbstreamer.service.SegmentFetcher;
+import org.nzbstreamer.streams.VirtualFileRangeStream;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.stereotype.Component;
 import org.xml.sax.helpers.DefaultHandler;
@@ -84,7 +87,8 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
 
             VirtualFile postedFile = new VirtualFile(nzbFile.getSize(), name, nzbFile);
             long startedAt = System.nanoTime();
-            try (InputStream stream = postedFile.getInputStream()) {
+            try (InputStream stream = new VirtualFileRangeStream(postedFile,
+                    ApplicationContextUtil.getBean(SegmentFetcher.class))) {
                 // The stream of a virtual file can move its cursor. The parser must use this
                 // stream and not the stream of Tika, because TikaInputStream.skip reads the bytes.
                 context.set(RarSourceStream.class, new RarSourceStream(stream));

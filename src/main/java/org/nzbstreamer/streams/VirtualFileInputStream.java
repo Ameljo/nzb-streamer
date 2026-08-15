@@ -30,7 +30,9 @@ public class VirtualFileInputStream extends InputStream {
 
     private final VirtualFile file;
     private final SegmentFetcher fetcher;
-    private final boolean background;
+    private final int maxRetries;
+    private final int parallelDownloads;
+    private final String source = callerClass();
 
     /**
      * The queue and the flags of the worker that runs now.
@@ -48,29 +50,53 @@ public class VirtualFileInputStream extends InputStream {
     /** The bytes of the queue that the stream reads now. */
     private byte[] currentBytes;
     private int cursor;
+    /** The position of the file for the first byte of {@link #currentBytes}. */
+    private long currentBytesStart;
+
+    private static final int MAX_RETRIES = 3;
+    private static final int PARALLEL_DOWNLOADS = 8;
 
     public VirtualFileInputStream(VirtualFile file) {
-        this(file, ApplicationContextUtil.getBean(SegmentFetcher.class), false);
+        this(file, ApplicationContextUtil.getBean(SegmentFetcher.class));
     }
 
     public VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher) {
-        this(file, fetcher, false);
+        this(file, fetcher, MAX_RETRIES, PARALLEL_DOWNLOADS);
     }
 
-    /**
-     * @param background true for work that must not stop a read operation of a player. It uses one
-     *                   part of the connections and it makes one attempt for each segment.
-     */
-    public VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher, boolean background) {
+    private VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher, int maxRetries,
+                                   int parallelDownloads) {
         this.file = file;
         this.fetcher = fetcher;
-        this.background = background;
+        this.maxRetries = maxRetries;
+        this.parallelDownloads = parallelDownloads;
         seek(0);
     }
 
-    /** Makes a stream for work in the background. */
-    public static VirtualFileInputStream background(VirtualFile file, SegmentFetcher fetcher) {
-        return new VirtualFileInputStream(file, fetcher, true);
+    /** A stream for reading headers: it seeks often, thus it reads no segment in advance. */
+    public static VirtualFileInputStream forHeaders(VirtualFile file, SegmentFetcher fetcher) {
+        return new VirtualFileInputStream(file, fetcher, MAX_RETRIES, 1);
+    }
+
+    /** A stream for reading headers, with the fetcher of the application. */
+    public static VirtualFileInputStream forHeaders(VirtualFile file) {
+        return forHeaders(file, ApplicationContextUtil.getBean(SegmentFetcher.class));
+    }
+
+    /** The class that made this stream, for the logs: the transformer, the scanner, a controller. */
+    private static String callerClass() {
+        return StackWalker.getInstance().walk(frames -> frames
+                .map(StackWalker.StackFrame::getClassName)
+                .filter(name -> !name.startsWith("org.nzbstreamer.streams."))
+                .filter(name -> !name.equals("org.nzbstreamer.model.VirtualFile"))
+                .findFirst()
+                .map(name -> name.substring(name.lastIndexOf('.') + 1))
+                .orElse("unknown"));
+    }
+
+    /** Makes a stream that makes one attempt for each segment. */
+    public static VirtualFileInputStream withoutRetry(VirtualFile file, SegmentFetcher fetcher) {
+        return new VirtualFileInputStream(file, fetcher, 1, 1);
     }
 
     @Override
@@ -100,6 +126,7 @@ public class VirtualFileInputStream extends InputStream {
                         e.getCause());
             }
             cursor = 0;
+            currentBytesStart = position;
         }
         position++;
         return currentBytes[cursor++] & 0xFF;
@@ -109,8 +136,20 @@ public class VirtualFileInputStream extends InputStream {
         return file;
     }
 
-    /** Moves the cursor and starts the worker at the new position. */
+    /**
+     * Moves the cursor and starts the worker at the new position.
+     *
+     * <p>A move inside the bytes that the stream holds now keeps the worker. Tika marks the
+     * stream, reads a few bytes and moves back. Without this, that move downloads again the
+     * segment that is already in the memory.</p>
+     */
     public void seek(long newPosition) {
+        if (currentBytes != null && newPosition >= currentBytesStart
+                && newPosition < currentBytesStart + currentBytes.length) {
+            position = newPosition;
+            cursor = (int) (newPosition - currentBytesStart);
+            return;
+        }
         position = newPosition;
         if (!file.hasNext(position)) {
             stopWorker();
@@ -178,7 +217,8 @@ public class VirtualFileInputStream extends InputStream {
         cursor = 0;
 
         Thread worker = new Thread(new DownloadSegmentsWorker(startPosition, file, bufferQueue,
-                endOfSegments, running, fetcher, background), "segment-download-worker");
+                endOfSegments, running, fetcher, maxRetries, parallelDownloads, source),
+                "worker-" + source);
         worker.setDaemon(true);
         worker.start();
     }

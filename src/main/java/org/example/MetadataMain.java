@@ -13,6 +13,8 @@ import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.parser.NzbParserFactory;
 import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.service.NNTPClientFactory;
+import org.nzbstreamer.service.SegmentFetcher;
+import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.service.UsenetDownloadService;
 import org.nzbstreamer.transformers.NzbFileTransformer;
 import org.nzbstreamer.transformers.TikaNzbFileTransformer;
@@ -33,7 +35,8 @@ public class MetadataMain {
         context.getEnvironment().getPropertySources()
                 .addFirst(new ResourcePropertySource("classpath:application-local.properties"));
         context.register(PropertySourcesPlaceholderConfigurer.class, ApplicationContextUtil.class,
-                NNTPClientFactory.class, UsenetDownloadService.class);
+                NNTPClientFactory.class, UsenetConnectionPool.class, SegmentFetcher.class,
+                UsenetDownloadService.class);
         context.refresh();
 
         Nzb nzb = NzbParserFactory.createParser().parse(new FileInputStream("downloads/test2.nzb"));

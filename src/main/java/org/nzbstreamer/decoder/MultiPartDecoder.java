@@ -40,6 +40,38 @@ public class MultiPartDecoder extends AbstractYencDecoder implements YencDecoder
         return output.toByteArray();
     }
 
+    /**
+     * Decodes the first bytes of the part, and stops when it holds {@code maxBytes} or more.
+     *
+     * <p>This operation does not close the reader when it stops at {@code maxBytes}: a close
+     * operation reads the rest of the article. The caller thus decides what to do with the bytes
+     * that come after, and it can give the connection to another thread.</p>
+     *
+     * @return the bytes, and a length of {@code maxBytes} or more when the part continues
+     */
+    public byte[] decodePrefix(Reader reader, int maxBytes) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        BufferedReader bufferedReader = new BufferedReader(reader);
+        var crc = new CRC32();
+        var inYencData = false;
+        String line;
+        while ((line = bufferedReader.readLine()) != null) {
+            if (line.startsWith("=ybegin")) {
+                inYencData = true;
+            } else if (line.startsWith("=yend")) {
+                bufferedReader.close();
+                return output.toByteArray();
+            } else if (inYencData && !line.startsWith("=ypart")) {
+                decodeLine(line, crc, output);
+                if (output.size() >= maxBytes) {
+                    return output.toByteArray();
+                }
+            }
+        }
+        bufferedReader.close();
+        return output.toByteArray();
+    }
+
     @Override
     public YencPartInfo parseYencPartInfo(Reader reader) throws Exception {
         try (BufferedReader bufferedReader = new BufferedReader(reader)) {

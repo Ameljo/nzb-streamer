@@ -1,5 +1,7 @@
 package org.nzbstreamer.parser;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.utils.NzbUtils;
 import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.model.Nzb;
@@ -8,6 +10,7 @@ import jakarta.xml.bind.JAXBException;
 import jakarta.xml.bind.Unmarshaller;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.NzbFile;
+import org.nzbstreamer.model.Segment;
 import org.nzbstreamer.service.UsenetDownloadService;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -20,6 +23,8 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class JaxbNzbParser implements NzbParser{
+
+    private static final Logger log = LogManager.getLogger(JaxbNzbParser.class);
     private final JAXBContext jaxbContext;
 
     public JaxbNzbParser() {
@@ -33,22 +38,53 @@ public class JaxbNzbParser implements NzbParser{
     @Override
     public Nzb parse(InputStream input) throws NzbParseException {
         try {
-            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-            XMLReader reader = createSecureXmlReader();
-            SAXSource source = new SAXSource(reader, new InputSource(stripBom(input)));
-            Nzb nzb = (Nzb) unmarshaller.unmarshal(source);
+            long startedAt = System.nanoTime();
+            Nzb nzb = parseHeadersOnly(input);
             UsenetDownloadService downloadService = ApplicationContextUtil.getBean(UsenetDownloadService.class);
-            for (NzbFile file: nzb.getFiles()) {
-                if (NzbUtils.sanitizeFileName(file.getSubject()).contains(".nfo")) {
-                    continue;
-                }
-                downloadService.populateNzbFileSizes(file);
-            }
+            downloadService.populateNzbFileSizes(nzb.getFiles().stream()
+                    .filter(file -> !NzbUtils.sanitizeFileName(file.getSubject()).contains(".nfo"))
+                    .toList());
+            log.info("NZB of {} posts read in {} ms", nzb.getFiles().size(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
 
             return nzb;
         } catch (Exception e) {
             throw new NzbParseException("Failed to parse NZB file", e);
         }
+    }
+
+    /**
+     * Reads the NZB without a connection to the news server. The sizes come from the {@code bytes}
+     * attributes, which give the size of the article and not always the size of the decoded
+     * segment. Use it to choose a post, not to seek in one.
+     */
+    public Nzb parseHeadersOnly(InputStream input) throws NzbParseException {
+        try {
+            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+            XMLReader reader = createSecureXmlReader();
+            SAXSource source = new SAXSource(reader, new InputSource(stripBom(input)));
+            Nzb nzb = (Nzb) unmarshaller.unmarshal(source);
+            for (NzbFile file : nzb.getFiles()) {
+                setSizesFromAttributes(file);
+            }
+            return nzb;
+        } catch (Exception e) {
+            throw new NzbParseException("Failed to parse NZB file", e);
+        }
+    }
+
+    private void setSizesFromAttributes(NzbFile file) {
+        if (file.getSegments() == null || file.getSegments().getSegment() == null) {
+            return;
+        }
+        long position = 0;
+        for (Segment segment : file.getSegments().getSegment()) {
+            long bytes = segment.getBytes() == null ? 0 : segment.getBytes().longValue();
+            segment.setSize(bytes);
+            segment.setStartPosition(position);
+            position += bytes;
+        }
+        file.setSize(position);
     }
 
     /**

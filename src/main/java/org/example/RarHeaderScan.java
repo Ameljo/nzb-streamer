@@ -13,6 +13,8 @@ import org.nzbstreamer.rar.RarHeaderParser;
 import org.nzbstreamer.rar.RarParseException;
 import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.service.NNTPClientFactory;
+import org.nzbstreamer.service.SegmentFetcher;
+import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.service.UsenetDownloadService;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -178,7 +180,8 @@ public final class RarHeaderScan {
         context.getEnvironment().getPropertySources()
                 .addFirst(new ResourcePropertySource("classpath:" + USENET_PROPERTIES));
         context.register(PropertySourcesPlaceholderConfigurer.class, ApplicationContextUtil.class,
-                NNTPClientFactory.class, UsenetDownloadService.class);
+                NNTPClientFactory.class, UsenetConnectionPool.class, SegmentFetcher.class,
+                UsenetDownloadService.class);
         context.refresh();
         return context;
     }

@@ -57,6 +57,12 @@ public final class RarHeaderParser {
                     endOfArchive = true;
                     break;
                 }
+                // Only the last file of a volume continues into the next volume. Thus no file
+                // header comes after this one, and the blocks that stay are at the end of the
+                // volume, which a stream over a network reads with another request.
+                if (block instanceof RarFileEntry entry && entry.splitAfter()) {
+                    break;
+                }
 
                 long nextBlock = block.dataOffset() + block.dataSize();
                 if (nextBlock <= blockStart) {

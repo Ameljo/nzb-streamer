@@ -8,8 +8,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -37,26 +40,21 @@ public class UsenetConnectionPool {
     /** One permit for each connection. A caller waits here when all the connections are in use. */
     private final Semaphore permits;
 
-    /**
-     * The permits of the work in the background, for example a scan of an image.
-     *
-     * <p>That work takes a permit here and a permit of {@link #permits}. Thus the connections that
-     * stay are always available for a read operation of a player.</p>
-     */
-    private final Semaphore backgroundPermits;
-
     private final BlockingQueue<PooledClient> free = new LinkedBlockingQueue<>();
 
+    /** Reads the rest of the answers that a caller of {@link #releaseAfterDrain} did not read. */
+    private final ExecutorService drains = Executors.newCachedThreadPool(task -> {
+        Thread thread = new Thread(task, "segment-drain");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     public UsenetConnectionPool(NNTPClientFactory clientFactory,
-                                @Value("${usenet.pool-size:40}") int size,
-                                @Value("${usenet.background-share:0.7}") double backgroundShare) {
+                                @Value("${usenet.pool-size:40}") int size) {
         this.clientFactory = clientFactory;
         this.size = size;
         this.permits = new Semaphore(size);
-        int background = Math.max(1, (int) Math.round(size * backgroundShare));
-        this.backgroundPermits = new Semaphore(background);
-        log.info("connection pool of {} connections, {} for the work in the background", size,
-                background);
+        log.info("connection pool of {} connections", size);
     }
 
     /** A connection and the newsgroup that it selected. */
@@ -64,7 +62,6 @@ public class UsenetConnectionPool {
 
         private final NNTPClient client;
         private String group;
-        private boolean background;
 
         private PooledClient(NNTPClient client) {
             this.client = client;
@@ -88,30 +85,13 @@ public class UsenetConnectionPool {
      * {@link #discard(PooledClient)}.
      */
     public PooledClient borrow() throws IOException, InterruptedException {
-        return borrow(false);
-    }
-
-    /**
-     * Gives a connection. Work in the background waits when it uses its part of the pool.
-     *
-     * @param background true for work that must not stop a read operation of a player
-     */
-    public PooledClient borrow(boolean background) throws IOException, InterruptedException {
-        if (background) {
-            backgroundPermits.acquire();
-        }
-        try {
-            return borrowConnection(background);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (background) {
-                backgroundPermits.release();
-            }
-            throw e;
-        }
-    }
-
-    private PooledClient borrowConnection(boolean background) throws IOException, InterruptedException {
+        long startedAt = System.nanoTime();
         permits.acquire();
+        long waitedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        if (waitedMs > 0) {
+            log.debug("waited {} ms for a connection, {} free of {}", waitedMs,
+                    permits.availablePermits(), size);
+        }
         try {
             PooledClient pooled = free.poll();
             if (pooled != null && !pooled.client().isConnected()) {
@@ -122,7 +102,6 @@ public class UsenetConnectionPool {
             if (pooled == null) {
                 pooled = new PooledClient(clientFactory.createClient());
             }
-            pooled.background = background;
             return pooled;
         } catch (IOException | RuntimeException e) {
             permits.release();
@@ -132,21 +111,38 @@ public class UsenetConnectionPool {
 
     /** Gives the connection back to the pool. */
     public void release(PooledClient pooled) {
-        boolean background = pooled.background;
         free.offer(pooled);
         permits.release();
-        if (background) {
-            backgroundPermits.release();
-        }
+    }
+
+    /**
+     * Reads the rest of an answer on another thread, then takes the connection back.
+     *
+     * <p>A caller that needs only the first bytes of an article uses this. A close operation on
+     * the reader reads the bytes that stay, and the connection is then at the end of the answer
+     * and good for the next command. That read happens here, thus the caller does not wait for
+     * it.</p>
+     *
+     */
+    public void releaseAfterDrain(PooledClient pooled, Reader reader) {
+        long startedAt = System.nanoTime();
+        drains.submit(() -> {
+            try {
+                reader.close();
+                release(pooled);
+                log.debug("the rest of an answer arrived in {} ms",
+                        (System.nanoTime() - startedAt) / 1_000_000);
+            } catch (IOException e) {
+                log.debug("cannot read the rest of an answer: {}", e.getMessage());
+                discard(pooled);
+            }
+        });
     }
 
     /** Removes a connection that has an error. The next caller makes a new one. */
     public void discard(PooledClient pooled) {
         closeQuietly(pooled);
         permits.release();
-        if (pooled.background) {
-            backgroundPermits.release();
-        }
     }
 
     @PreDestroy
