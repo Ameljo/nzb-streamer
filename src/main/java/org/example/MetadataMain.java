@@ -16,6 +16,8 @@ import org.nzbstreamer.service.NNTPClientFactory;
 import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.service.UsenetDownloadService;
+import org.nzbstreamer.service.UsenetPoolConfig;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.transformers.NzbFileTransformer;
 import org.nzbstreamer.transformers.TikaNzbFileTransformer;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -35,21 +37,22 @@ public class MetadataMain {
         context.getEnvironment().getPropertySources()
                 .addFirst(new ResourcePropertySource("classpath:application-local.properties"));
         context.register(PropertySourcesPlaceholderConfigurer.class, ApplicationContextUtil.class,
-                NNTPClientFactory.class, UsenetConnectionPool.class, SegmentFetcher.class,
-                UsenetDownloadService.class);
+                NNTPClientFactory.class, UsenetPoolConfig.class, UsenetConnectionPool.class,
+                SegmentFetcher.class, VirtualFileStreamFactory.class, UsenetDownloadService.class);
         context.refresh();
+        VirtualFileStreamFactory streams = context.getBean(VirtualFileStreamFactory.class);
 
         Nzb nzb = NzbParserFactory.createParser().parse(new FileInputStream("downloads/test2.nzb"));
         // One transformer reads all the NZB, because a file of an archive can continue from one
         // volume to the next volume.
-        List<VirtualFile> files = new TikaNzbFileTransformer().transform(nzb);
+        List<VirtualFile> files = new TikaNzbFileTransformer(streams).transform(nzb);
         if (files.isEmpty()) {
             log.warn("no virtual file in the NZB");
             return;
         }
 
         VirtualFile vf = files.getFirst();
-        try (InputStream is = vf.getInputStream()) {
+        try (InputStream is = streams.open(vf)) {
             Metadata metadata = extractMetadata(is);
             System.out.println("Tika metadata for file: " + vf.filename());
             for (String name : metadata.names()) {

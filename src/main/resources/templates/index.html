@@ -4,6 +4,7 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>NZB Streamer</title>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
@@ -17,11 +18,23 @@
         /* Upload card */
         .upload-card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
         .upload-card h2 { font-size: 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+
+        /* Tabs */
+        .upload-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #2d3148; }
+        .tab-btn { background: none; border: none; color: #64748b; padding: 8px 16px; cursor: pointer; font-size: 0.875rem; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.2s; }
+        .tab-btn.active { color: #7c8cf8; border-bottom-color: #7c8cf8; }
+        .tab-btn:hover:not(.active) { color: #94a3b8; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
         .upload-form { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .file-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #252840; border: 1px dashed #4a5080; border-radius: 8px; padding: 10px 20px; color: #94a3b8; transition: all 0.2s; }
         .file-label:hover { border-color: #7c8cf8; color: #7c8cf8; }
         .file-label input[type=file] { display: none; }
         #chosen-file { color: #64748b; font-size: 0.85rem; }
+        .url-input { flex: 1; min-width: 280px; background: #252840; border: 1px solid #4a5080; border-radius: 8px; padding: 10px 16px; color: #e2e8f0; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+        .url-input:focus { border-color: #7c8cf8; }
+        .url-input::placeholder { color: #475569; }
         .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .btn-primary { background: #7c8cf8; color: #fff; }
         .btn-primary:hover { background: #6470e8; }
@@ -50,6 +63,7 @@
         .file-card:hover { border-color: #4a5080; }
         .file-card-preview { height: 160px; background: #0f1117; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
         .file-card-preview video, .file-card-preview audio-thumb { width: 100%; height: 100%; object-fit: cover; }
+        .file-card-preview img.thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
         .media-icon { font-size: 3rem; opacity: 0.15; }
         .type-badge { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; color: #94a3b8; }
         .file-card-body { padding: 14px; }
@@ -58,14 +72,29 @@
         .file-actions { display: flex; gap: 8px; }
 
         /* Modal */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 500; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); display: none; align-items: center; justify-content: center; z-index: 500; padding: 16px; }
         .modal-overlay.open { display: flex; }
-        .modal { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 16px; padding: 24px; max-width: 90vw; width: 860px; }
-        .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .modal-title { font-weight: 600; color: #e2e8f0; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 700px; }
-        .modal-close { background: none; border: none; color: #64748b; font-size: 1.4rem; cursor: pointer; line-height: 1; }
+        .modal { background: #0f1117; border: 1px solid #2d3148; border-radius: 16px; padding: 20px; max-width: 1100px; width: 100%; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .modal-title { font-weight: 600; color: #e2e8f0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 48px); }
+        .modal-close { background: none; border: none; color: #64748b; font-size: 1.4rem; cursor: pointer; line-height: 1; flex-shrink: 0; }
         .modal-close:hover { color: #e2e8f0; }
-        #media-player { width: 100%; border-radius: 8px; max-height: 70vh; background: #000; }
+
+        /* Plyr theme overrides */
+        #player-wrap { border-radius: 10px; overflow: hidden; background: #000; }
+        .plyr--video { border-radius: 10px; }
+        .plyr--audio { --plyr-audio-controls-background: #1a1d2e; --plyr-audio-control-color: #94a3b8; border-radius: 10px; }
+        :root {
+            --plyr-color-main: #7c8cf8;
+            --plyr-video-background: #000;
+            --plyr-font-family: 'Segoe UI', system-ui, sans-serif;
+            --plyr-range-fill-background: #7c8cf8;
+            --plyr-badge-background: #7c8cf8;
+        }
+
+        /* Image viewer */
+        #image-wrap { text-align: center; max-height: 80vh; overflow: auto; }
+        #image-viewer { max-width: 100%; max-height: 78vh; border-radius: 8px; display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -82,18 +111,35 @@
     <!-- Upload -->
     <div class="upload-card">
         <h2>Add NZB File</h2>
-        <form class="upload-form" id="upload-form" enctype="multipart/form-data">
-            <label class="file-label">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Choose .nzb file
-                <input type="file" id="nzb-file" name="file" accept=".nzb" required/>
-            </label>
-            <span id="chosen-file">No file selected</span>
-            <button type="submit" class="btn btn-primary" id="upload-btn" disabled>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload &amp; Process
+        <div class="upload-tabs">
+            <button class="tab-btn active" onclick="switchTab('file', this)">📁 From File</button>
+            <button class="tab-btn" onclick="switchTab('url', this)">🔗 From URL</button>
+        </div>
+
+        <!-- File tab -->
+        <div id="tab-file" class="tab-pane active">
+            <form class="upload-form" id="upload-form" enctype="multipart/form-data">
+                <label class="file-label">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Choose .nzb file
+                    <input type="file" id="nzb-file" name="file" accept=".nzb" required/>
+                </label>
+                <span id="chosen-file">No file selected</span>
+                <button type="submit" class="btn btn-primary" id="upload-btn" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload &amp; Process
+                </button>
+            </form>
+        </div>
+
+        <!-- URL tab -->
+        <div id="tab-url" class="tab-pane">
+            <input type="url" id="nzb-url" class="url-input" placeholder="https://example.com/release.nzb" />
+            <button class="btn btn-primary" id="url-btn" onclick="uploadFromUrl()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Fetch &amp; Process
             </button>
-        </form>
+        </div>
     </div>
 
     <!-- File list -->
@@ -109,15 +155,20 @@
         </div>
 
         <div class="files-grid" th:unless="${#lists.isEmpty(files)}" id="files-grid">
-            <div class="file-card" th:each="file : ${files}" th:attr="data-id=${file.id}, data-name=${file.filename}, data-type=${file.contentType}">
+            <div class="file-card" th:each="file : ${files}" th:attr="data-id=${file.id}, data-name=${file.filename}, data-type=${file.contentType}, data-thumbnail=${file.thumbnailId}">
                 <div class="file-card-preview">
                     <span class="type-badge" th:text="${file.contentType ?: 'unknown'}">unknown</span>
-                    <!-- Inline thumbnail for video -->
-                    <span th:if="${file.contentType != null and file.contentType.startsWith('video/')}" class="media-icon">🎬</span>
-                    <span th:if="${file.contentType != null and file.contentType.startsWith('audio/')}" class="media-icon">🎵</span>
-                    <span th:if="${file.contentType != null and file.contentType.startsWith('image/')}" class="media-icon">🖼️</span>
-                    <span th:if="${file.contentType == null or (!file.contentType.startsWith('video/') and !file.contentType.startsWith('audio/') and !file.contentType.startsWith('image/'))}" class="media-icon">📄</span>
-                </div>
+                        <!-- Show thumbnail image when available, otherwise show icon -->
+                        <img th:if="${file.thumbnailId != null}" class="thumb"
+                             th:src="'/api/files/stream/' + ${file.thumbnailId}"
+                             th:alt="${file.filename}" loading="lazy" />
+                        <th:block th:unless="${file.thumbnailId != null}">
+                            <span th:if="${file.contentType != null and file.contentType.startsWith('video/')}" class="media-icon">🎬</span>
+                            <span th:if="${file.contentType != null and file.contentType.startsWith('audio/')}" class="media-icon">🎵</span>
+                            <span th:if="${file.contentType != null and file.contentType.startsWith('image/')}" class="media-icon">🖼️</span>
+                            <span th:if="${file.contentType == null or (!file.contentType.startsWith('video/') and !file.contentType.startsWith('audio/') and !file.contentType.startsWith('image/'))}" class="media-icon">📄</span>
+                        </th:block>
+                    </div>
                 <div class="file-card-body">
                     <div class="file-name" th:text="${file.filename}">filename.mkv</div>
                     <div class="file-meta" th:text="${#numbers.formatDecimal(file.size / 1048576.0, 1, 'COMMA', 2, 'POINT')} + ' MB'">0 MB</div>
@@ -147,13 +198,26 @@
             <span class="modal-title" id="player-title"></span>
             <button class="modal-close" onclick="closePlayer()">✕</button>
         </div>
-        <video id="media-player" controls autoplay></video>
+        <!-- Plyr video/audio container — rebuilt each time a file opens -->
+        <div id="player-wrap"></div>
+        <!-- Full-size image viewer -->
+        <div id="image-wrap" style="display:none;">
+            <img id="image-viewer" alt=""/>
+        </div>
     </div>
 </div>
 
 <div id="toast"></div>
 
 <script th:inline="javascript">
+    // Tab switching
+    function switchTab(name, btn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + name).classList.add('active');
+    }
+
     // File input label update
     document.getElementById('nzb-file').addEventListener('change', function () {
         const name = this.files[0] ? this.files[0].name : 'No file selected';
@@ -161,7 +225,7 @@
         document.getElementById('upload-btn').disabled = !this.files[0];
     });
 
-    // Upload form
+    // File upload form
     document.getElementById('upload-form').addEventListener('submit', async function (e) {
         e.preventDefault();
         const btn = document.getElementById('upload-btn');
@@ -183,6 +247,41 @@
             btn.disabled = false;
             btn.innerHTML = '&#8679; Upload &amp; Process';
         }
+    });
+
+    // URL upload
+    async function uploadFromUrl() {
+        const urlInput = document.getElementById('nzb-url');
+        const btn = document.getElementById('url-btn');
+        const url = urlInput.value.trim();
+        if (!url) { showToast('Please enter a URL', 'error'); return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Fetching…';
+        try {
+            const res = await fetch('/api/nzb/upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Processed ' + data.filesCount + ' file(s) from ' + data.filename, 'success');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showToast(data.message || 'Failed', 'error');
+            }
+        } catch (err) {
+            showToast('Network error: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Fetch &amp; Process';
+        }
+    }
+
+    // Allow Enter key in URL input
+    document.getElementById('nzb-url').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') uploadFromUrl();
     });
 
     // Delete
@@ -217,32 +316,82 @@
     }
 
     // Player
+    let plyrPlayer = null;
+
     function openPlayer(btn) {
-        const id = btn.dataset.id;
+        const id   = btn.dataset.id;
         const name = btn.dataset.name;
-        const type = btn.dataset.type;
-        const player = document.getElementById('media-player');
+        const type = btn.dataset.type || '';
+
         document.getElementById('player-title').textContent = name;
+        destroyPlyr();
 
-        player.src = '/api/files/stream/' + id;
+        const playerWrap = document.getElementById('player-wrap');
+        const imageWrap  = document.getElementById('image-wrap');
 
-        if (type && type.startsWith('audio/')) {
-            player.style.height = '60px';
+        if (type.startsWith('image/')) {
+            playerWrap.style.display = 'none';
+            imageWrap.style.display  = 'block';
+            document.getElementById('image-viewer').src = '/api/files/stream/' + id;
         } else {
-            player.style.height = '';
+            playerWrap.style.display = '';
+            imageWrap.style.display  = 'none';
+
+            const isAudio = type.startsWith('audio/');
+            const tag     = isAudio ? 'audio' : 'video';
+            const mime    = type || (isAudio ? 'audio/mpeg' : 'video/mp4');
+
+            playerWrap.innerHTML =
+                `<${tag} id="media-player" playsinline crossorigin="anonymous">` +
+                `<source src="/api/files/stream/${id}" type="${mime}">` +
+                `</${tag}>`;
+
+            plyrPlayer = new Plyr('#media-player', {
+                controls: isAudio
+                    ? ['play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings']
+                    : ['play-large', 'play', 'rewind', 'fast-forward', 'progress',
+                       'current-time', 'duration', 'mute', 'volume',
+                       'captions', 'settings', 'pip', 'fullscreen'],
+                settings: ['captions', 'quality', 'speed'],
+                speed:    { selected: 1, options: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3] },
+                keyboard: { focused: true, global: false },
+                tooltips: { controls: true, seek: true },
+                rewind:   10,
+                fastForward: 30,
+                ratio: isAudio ? null : undefined,
+            });
+
+            plyrPlayer.once('ready', () => plyrPlayer.play().catch(() => {}));
         }
+
         document.getElementById('player-modal').classList.add('open');
     }
 
+    function destroyPlyr() {
+        if (plyrPlayer) {
+            plyrPlayer.destroy();
+            plyrPlayer = null;
+        }
+    }
+
     function closePlayer() {
-        const player = document.getElementById('media-player');
-        player.pause();
-        player.src = '';
+        destroyPlyr();
+        document.getElementById('image-viewer').src = '';
+        document.getElementById('player-wrap').innerHTML = '';
+        document.getElementById('image-wrap').style.display  = 'none';
+        document.getElementById('player-wrap').style.display = '';
         document.getElementById('player-modal').classList.remove('open');
     }
 
     document.getElementById('player-modal').addEventListener('click', function (e) {
         if (e.target === this) closePlayer();
+    });
+
+    // Esc key closes player
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && document.getElementById('player-modal').classList.contains('open')) {
+            closePlayer();
+        }
     });
 
     // Toast
@@ -259,5 +408,6 @@
         }, 3500);
     }
 </script>
+<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 </body>
 </html>

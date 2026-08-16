@@ -10,7 +10,7 @@ import org.nzbstreamer.repository.VirtualResourceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.nzbstreamer.streams.VirtualFileInputStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.webdav.VirtualFileResource;
 import org.nzbstreamer.webdav.VirtualFolderResource;
 
@@ -22,11 +22,15 @@ public class VirtualResourceService {
     private static final Logger log = LogManager.getLogger(VirtualResourceService.class);
     private final VirtualResourceRepository resourceRepository;
     private final VirtualFileRepository fileRepository;
+    private final VirtualFileStreamFactory streams;
 
     @Autowired
-    public VirtualResourceService(VirtualResourceRepository resourceRepository, VirtualFileRepository fileRepository) {
+    public VirtualResourceService(VirtualResourceRepository resourceRepository,
+                                  VirtualFileRepository fileRepository,
+                                  VirtualFileStreamFactory streams) {
         this.resourceRepository = resourceRepository;
         this.fileRepository = fileRepository;
+        this.streams = streams;
     }
 
     @Transactional
@@ -43,7 +47,7 @@ public class VirtualResourceService {
                         children.add(resource);
                     } else {
                         VirtualFile vf = rChild.getFile();
-                        children.add(new VirtualFileResource(new VirtualFileInputStream(vf), folder));
+                        children.add(new VirtualFileResource(vf, folder, streams));
                     }
                 }
                 folder.setChildren(children);
@@ -51,7 +55,7 @@ public class VirtualResourceService {
             } else {
                 log.debug("returning file resource for path: " + url);
                 VirtualFile vf = r.getFile();
-                return new VirtualFileResource(new VirtualFileInputStream(vf), null);
+                return new VirtualFileResource(vf, null, streams);
             }
         }
         log.debug("_found: " + r + " for url: " + url + " (adjusted: " + url + ") and path: " + url);

@@ -10,21 +10,36 @@ import org.nzbstreamer.parser.NzbParserFactory;
 import org.nzbstreamer.service.NzbProcessingService;
 import org.nzbstreamer.service.UsenetDownloadService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/nzb")
 public class NzbController {
 
     private static final Logger log = LogManager.getLogger(NzbController.class);
+
+    @Value("${spring.servlet.multipart.max-file-size}")
+    private String maxUploadSize;
 
     @Autowired
     private NzbProcessingService nzbProcessingService;
@@ -151,58 +166,86 @@ public class NzbController {
         }
     }
 
-    @PostMapping(value = "/test", consumes = {"application/x-nzb", "application/xml", "text/xml"})
-    public ResponseEntity<Map<String, Object>> test(
-            @RequestBody byte[] nzbContent,
-            @RequestParam(value = "filename", required = false, defaultValue = "uploaded.nzb") String filename) {
+    /**
+     * Fetches and processes an NZB file from a remote URL.
+     *
+     * @param body JSON body with a {@code url} key pointing to an NZB file
+     * @return Response with processing status and details
+     */
+    @PostMapping(value = "/upload-url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadNzbFromUrl(@RequestBody Map<String, String> body) {
         Map<String, Object> response = new HashMap<>();
+        String url = body.get("url");
+
+        if (url == null || url.isBlank()) {
+            response.put("success", false);
+            response.put("message", "URL is required");
+            return ResponseEntity.badRequest().body(response);
+        }
 
         try {
-            // Validate content
-            if (nzbContent == null || nzbContent.length == 0) {
-                log.warn("Upload attempt with empty content");
+            URI uri = URI.create(url.trim());
+
+            log.info("Fetching NZB from URL: {}", url);
+
+            HttpClient client = HttpClient.newBuilder()
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .connectTimeout(Duration.ofSeconds(15))
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(uri)
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> httpResponse = client.send(request,
+                    HttpResponse.BodyHandlers.ofByteArray());
+
+            if (httpResponse.statusCode() < 200 || httpResponse.statusCode() >= 300) {
+                log.warn("Remote server returned {} for URL: {}", httpResponse.statusCode(), url);
                 response.put("success", false);
-                response.put("message", "File content is empty");
-                return ResponseEntity.badRequest().body(response);
+                response.put("message", "Remote server returned HTTP " + httpResponse.statusCode());
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
             }
 
-            // Ensure filename has .nzb extension
-            if (!filename.toLowerCase().endsWith(".nzb")) {
-                filename = filename + ".nzb";
+            byte[] nzbContent = httpResponse.body();
+            if (nzbContent == null || nzbContent.length == 0) {
+                response.put("success", false);
+                response.put("message", "Remote URL returned empty content");
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
             }
 
-            log.info("Received raw NZB file upload request: {}", filename);
+            String filename = nzbNameOf(httpResponse, uri);
+            Nzb nzb = nzbProcessingService.processNzbFile(
+                    new ByteArrayInputStream(nzbContent), filename);
 
-            // Process the NZB file
-            java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(nzbContent);
-            Nzb nzb = nzbProcessingService.processNzbFileWithoutSaving(inputStream, filename);
-
-            // Build success response
             response.put("success", true);
             response.put("message", "NZB file processed successfully");
             response.put("filename", filename);
             response.put("filesCount", nzb.getFiles().size());
-
-            log.info("Successfully processed raw NZB file: {} with {} files", filename, nzb.getFiles().size());
-
+            log.info("Successfully processed NZB from URL: {} ({} files)", url, nzb.getFiles().size());
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid URL: {}", url);
+            response.put("success", false);
+            response.put("message", "Invalid URL: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
         } catch (NzbParseException e) {
-            log.error("Failed to parse NZB file", e);
+            log.error("Failed to parse NZB from URL: {}", url, e);
             response.put("success", false);
             response.put("message", "Failed to parse NZB file: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
 
         } catch (Exception e) {
-            log.error("Unexpected error processing NZB file", e);
+            log.error("Unexpected error processing NZB from URL: {}", url, e);
             response.put("success", false);
             response.put("message", "Unexpected error: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    @PostMapping(value = "/download", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String, Object>> download(@RequestParam("file") MultipartFile file) {
+    @PostMapping(value = "/download", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)    public ResponseEntity<Map<String, Object>> download(@RequestParam("file") MultipartFile file) {
         Map<String, Object> response = new HashMap<>();
 
         try {
@@ -258,6 +301,97 @@ public class NzbController {
             response.put("message", "Unexpected error: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    /**
+     * The last part of the path of a URL that names the operation of an indexer and not a release.
+     * A name of this list gives the same folder to every NZB of that indexer.
+     */
+    private static final Set<String> GENERIC_URL_SEGMENTS =
+            Set.of("download", "downloads", "nzb", "get", "getnzb", "fetch", "api", "file");
+
+    private static final Pattern FILENAME_STAR =
+            Pattern.compile("filename\\*\\s*=\\s*[^']*'[^']*'([^;]+)", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern FILENAME_PLAIN =
+            Pattern.compile("filename\\s*=\\s*\"?([^\";]+)\"?", Pattern.CASE_INSENSITIVE);
+
+    /** The number of characters of a name. The column of the path of a resource holds 255. */
+    private static final int NAME_LIMIT = 120;
+
+    /**
+     * The name of the NZB that a URL gives.
+     *
+     * <p>The name becomes the folder of WebDAV of the release, thus two releases need two names.
+     * The header {@code Content-Disposition} holds the name that the indexer gives to the file,
+     * which is the name of the release; a browser saves the file under that name. The last part of
+     * the path of the URL comes after it, because an indexer often ends its links with a word of
+     * its API — {@code /download} gives the folder {@code /webdav/download} to every release.</p>
+     */
+    private static String nzbNameOf(HttpResponse<byte[]> httpResponse, URI uri) {
+        String fromHeader = httpResponse.headers().firstValue("Content-Disposition")
+                .map(NzbController::filenameOf)
+                .filter(name -> !name.isBlank())
+                .orElse(null);
+        if (fromHeader != null) {
+            return asNzbName(fromHeader);
+        }
+
+        String path = uri.getPath();
+        String segment = path != null && path.contains("/")
+                ? path.substring(path.lastIndexOf('/') + 1)
+                : "";
+        String withoutExtension = segment.toLowerCase().endsWith(".nzb")
+                ? segment.substring(0, segment.length() - 4)
+                : segment;
+        if (!withoutExtension.isBlank()
+                && !GENERIC_URL_SEGMENTS.contains(withoutExtension.toLowerCase())) {
+            return asNzbName(segment);
+        }
+        return "downloaded.nzb";
+    }
+
+    /** The value of {@code filename} of a header Content-Disposition, or an empty text. */
+    private static String filenameOf(String contentDisposition) {
+        Matcher encoded = FILENAME_STAR.matcher(contentDisposition);
+        if (encoded.find()) {
+            return URLDecoder.decode(encoded.group(1).trim(), StandardCharsets.UTF_8);
+        }
+        Matcher plain = FILENAME_PLAIN.matcher(contentDisposition);
+        return plain.find() ? plain.group(1).trim() : "";
+    }
+
+    /**
+     * Makes a name that is good for a folder of the tree.
+     *
+     * <p>The name comes from another server, thus this removes the characters of a path: a name
+     * that holds a slash or two dots makes a resource outside its folder.</p>
+     */
+    private static String asNzbName(String name) {
+        String clean = name.replaceAll("[\\\\/:*?\"<>|]", "_").replace("..", "_").trim();
+        if (clean.toLowerCase().endsWith(".nzb")) {
+            clean = clean.substring(0, clean.length() - 4);
+        }
+        if (clean.length() > NAME_LIMIT) {
+            clean = clean.substring(0, NAME_LIMIT);
+        }
+        return clean.isBlank() ? "downloaded.nzb" : clean + ".nzb";
+    }
+
+    /**
+     * Answers an upload that passes {@code spring.servlet.multipart.max-file-size}.
+     *
+     * <p>The container of the servlet throws before it calls the operation of the upload, thus
+     * the try of that operation does not see this. Without this handler the caller gets a 500
+     * that holds no JSON, and the page shows nothing.</p>
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadTooLarge(MaxUploadSizeExceededException e) {
+        log.warn("Upload attempt over the limit of {}", maxUploadSize);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("message", "File is too large. The limit is " + maxUploadSize + ".");
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(response);
     }
 
     /**

@@ -3,7 +3,6 @@ package org.nzbstreamer.streams;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.workers.DownloadSegmentsWorker;
 
@@ -56,10 +55,6 @@ public class VirtualFileInputStream extends InputStream {
     private static final int MAX_RETRIES = 3;
     private static final int PARALLEL_DOWNLOADS = 8;
 
-    public VirtualFileInputStream(VirtualFile file) {
-        this(file, ApplicationContextUtil.getBean(SegmentFetcher.class));
-    }
-
     public VirtualFileInputStream(VirtualFile file, SegmentFetcher fetcher) {
         this(file, fetcher, MAX_RETRIES, PARALLEL_DOWNLOADS);
     }
@@ -73,16 +68,6 @@ public class VirtualFileInputStream extends InputStream {
         seek(0);
     }
 
-    /** A stream for reading headers: it seeks often, thus it reads no segment in advance. */
-    public static VirtualFileInputStream forHeaders(VirtualFile file, SegmentFetcher fetcher) {
-        return new VirtualFileInputStream(file, fetcher, MAX_RETRIES, 1);
-    }
-
-    /** A stream for reading headers, with the fetcher of the application. */
-    public static VirtualFileInputStream forHeaders(VirtualFile file) {
-        return forHeaders(file, ApplicationContextUtil.getBean(SegmentFetcher.class));
-    }
-
     /** The class that made this stream, for the logs: the transformer, the scanner, a controller. */
     private static String callerClass() {
         return StackWalker.getInstance().walk(frames -> frames
@@ -92,11 +77,6 @@ public class VirtualFileInputStream extends InputStream {
                 .findFirst()
                 .map(name -> name.substring(name.lastIndexOf('.') + 1))
                 .orElse("unknown"));
-    }
-
-    /** Makes a stream that makes one attempt for each segment. */
-    public static VirtualFileInputStream withoutRetry(VirtualFile file, SegmentFetcher fetcher) {
-        return new VirtualFileInputStream(file, fetcher, 1, 1);
     }
 
     @Override
@@ -118,8 +98,6 @@ public class VirtualFileInputStream extends InputStream {
                 Thread.currentThread().interrupt();
                 throw new IOException("Interrupted while waiting for data", e);
             } catch (ExecutionException e) {
-                // The caller of the stream possibly writes this error in the log as a normal end
-                // of a request. Thus this class writes it here with its cause.
                 log.error("{}: cannot download the segment of position {} of {}", file.filename(),
                         position, file.getSize(), e.getCause());
                 throw new IOException("Cannot download the segment of position " + position,

@@ -1,5 +1,6 @@
 package org.nzbstreamer.streams;
 
+import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.service.SegmentFetcher;
 
@@ -94,7 +95,11 @@ public class VirtualFileRangeStream extends InputStream {
                             location.byteInSegment() + PREFIX_BYTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while it downloads a segment", e);
+            throw new IOException("Interrupted while it downloads a segment " + location.segment().getValue()
+                    + " of group " + location.group() + " at position " + position, e);
+        } catch (UsenetException e) {
+            throw new IOException("Failed to download segment " + location.segment().getValue()
+                    + " of group " + location.group() + " at position " + position, e);
         }
         segmentStart = start;
         segmentEnd = position + location.bytesLeftInSegment();

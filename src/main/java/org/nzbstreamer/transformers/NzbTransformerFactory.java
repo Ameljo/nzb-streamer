@@ -2,6 +2,7 @@ package org.nzbstreamer.transformers;
 
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -9,8 +10,11 @@ import java.util.List;
 @Component
 public class NzbTransformerFactory {
 
-    private final NzbTransformer<List<VirtualFile>> tikaNzbFileTransformer =
-            new TikaNzbFileTransformer();
+    private final NzbTransformer<List<VirtualFile>> tikaNzbFileTransformer;
+
+    public NzbTransformerFactory(VirtualFileStreamFactory streams) {
+        this.tikaNzbFileTransformer = new TikaNzbFileTransformer(streams);
+    }
 
     /**
      * Gives the transformer for an NZB.

@@ -1,6 +1,7 @@
 package org.nzbstreamer.model;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -10,9 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
-import org.nzbstreamer.streams.VirtualFileInputStream;
 
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +40,10 @@ public class VirtualFile {
     private String contentType;
 
     private Long size;
+
+    /** ID of a thumbnail image {@link VirtualFile} for this file, or {@code null}. */
+    @Column(name = "thumbnail_id")
+    private UUID thumbnailId;
 
     // JoinColumn and not a table of the relation: the order column then goes in the table of the
     // chunks.
@@ -132,10 +135,6 @@ public class VirtualFile {
         return chunks.stream().mapToInt(chunk -> chunk.segments().size()).sum();
     }
 
-    public InputStream getInputStream() throws Exception {
-        return new VirtualFileInputStream(this);
-    }
-
     public long getSize() {
         return size == null ? 0 : size;
     }
@@ -178,5 +177,13 @@ public class VirtualFile {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public UUID getThumbnailId() {
+        return thumbnailId;
+    }
+
+    public void setThumbnailId(UUID thumbnailId) {
+        this.thumbnailId = thumbnailId;
     }
 }
