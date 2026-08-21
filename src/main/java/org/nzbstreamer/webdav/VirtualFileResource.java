@@ -7,7 +7,8 @@ import io.milton.resource.GetableResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.streams.VirtualFileInputStream;
+import org.nzbstreamer.streams.VirtualFileStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -20,6 +21,7 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
     private static final Logger log = LogManager.getLogger(VirtualFileResource.class);
 
     private final VirtualFile vf;
+    private final VirtualFileStreamFactory streams;
 
     private String resourcetype = null;
     private String displayname;
@@ -29,12 +31,21 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
     private Date getlastmodified;
     private Date creationdate;
 
-    public VirtualFileResource(VirtualFileInputStream inputStream, VirtualFolderResource parent) {
-        super(parent, inputStream.getFile().filename());
-        this.vf = inputStream.getFile();
-        this.displayname = inputStream.getFile().filename();
+    /**
+     * Makes the resource of one file.
+     *
+     * <p>The constructor opens no stream: a listing of a folder makes a resource for each file in
+     * it, and a stream starts a worker that downloads segments. {@link #sendContent} opens the
+     * stream, thus only a request for the bytes reaches the news server.</p>
+     */
+    public VirtualFileResource(VirtualFile vf, VirtualFolderResource parent,
+                               VirtualFileStreamFactory streams) {
+        super(parent, vf.filename());
+        this.vf = vf;
+        this.streams = streams;
+        this.displayname = vf.filename();
         this.getetag = this.id.toString();
-        this.getcontentlength = inputStream.getFile().getSize();
+        this.getcontentlength = vf.getSize();
         this.getcontenttype = vf.getContentType();
         this.getlastmodified = new Date();
         this.creationdate = new Date();
@@ -148,7 +159,7 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
         log.debug("Stream requested for range {} to {}", start, end);
 
         long bytesToWrite = end - start + 1;
-        try (VirtualFileInputStream nzbStream = new VirtualFileInputStream(vf)) {
+        try (VirtualFileStream nzbStream = streams.open(vf)) {
             if (start > 0) nzbStream.skip(start);
             int bufferLength = 65536;
             int read;

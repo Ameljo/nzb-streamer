@@ -16,6 +16,8 @@ import org.nzbstreamer.service.NNTPClientFactory;
 import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.service.UsenetDownloadService;
+import org.nzbstreamer.service.UsenetPoolConfig;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
@@ -108,18 +110,19 @@ public final class RarHeaderScan {
             // The subject of an obfuscated post gives no file name. Thus this example does not use
             // the name to find the archives. It gives each file to the parser. The parser reads the
             // signature and refuses the files that are not RAR archives.
+            VirtualFileStreamFactory streams = context.getBean(VirtualFileStreamFactory.class);
             for (NzbFile nzbFile : nzb.getFiles()) {
-                scanVolume(nzbFile, NzbUtils.sanitizeFileName(nzbFile.getSubject()));
+                scanVolume(nzbFile, NzbUtils.sanitizeFileName(nzbFile.getSubject()), streams);
             }
         }
     }
 
-    private static void scanVolume(NzbFile nzbFile, String name) {
+    private static void scanVolume(NzbFile nzbFile, String name, VirtualFileStreamFactory streams) {
         VirtualFile volume = new VirtualFile(nzbFile.getSize(), name, nzbFile);
 
         long startedAt = System.nanoTime();
         RarArchive archive;
-        try (InputStream stream = volume.getInputStream()) {
+        try (InputStream stream = streams.openRange(volume)) {
             archive = new RarHeaderParser().parse(stream);
         } catch (RarParseException e) {
             log.info("{} ({} bytes): not a RAR archive - {}", name, nzbFile.getSize(), e.getMessage());
@@ -180,8 +183,8 @@ public final class RarHeaderScan {
         context.getEnvironment().getPropertySources()
                 .addFirst(new ResourcePropertySource("classpath:" + USENET_PROPERTIES));
         context.register(PropertySourcesPlaceholderConfigurer.class, ApplicationContextUtil.class,
-                NNTPClientFactory.class, UsenetConnectionPool.class, SegmentFetcher.class,
-                UsenetDownloadService.class);
+                NNTPClientFactory.class, UsenetPoolConfig.class, UsenetConnectionPool.class,
+                SegmentFetcher.class, VirtualFileStreamFactory.class, UsenetDownloadService.class);
         context.refresh();
         return context;
     }

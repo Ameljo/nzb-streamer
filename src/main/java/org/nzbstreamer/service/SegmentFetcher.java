@@ -3,13 +3,12 @@ package org.nzbstreamer.service;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.decoder.MultiPartDecoder;
+import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Downloads one segment and gives its bytes after the decode operation.
@@ -31,108 +30,77 @@ public class SegmentFetcher {
     /**
      * Gives the bytes of one segment.
      *
-     * @throws IOException if the segment is not on the server, or if the connection has an error
+     * <p>This operation makes one attempt. The evictor of the pool closes the connections that
+     * the server closed, and {@code DownloadSegmentsWorker} makes the attempts that stay.</p>
+     *
+     * @throws org.nzbstreamer.exceptions.ArticleUnavaliableException if the segment is not on the
+     *         server
      */
     public byte[] fetch(String messageId, String group)
-            throws IOException, InterruptedException {
+            throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();
-        UsenetConnectionPool.PooledClient pooled = pool.borrow();
-        boolean healthy = false;
+        PooledClient pooled = pool.borrow(group);
+        long transferStart = System.nanoTime();
+        byte[] bytes;
 
-        try {
-            long groupMs = 0;
-            if (!group.equals(pooled.group())) {
-                long groupStart = System.nanoTime();
-                if (!pooled.client().selectNewsgroup(group)) {
-                    throw new IOException("Failed to select group: " + group);
-                }
-                pooled.group(group);
-                groupMs = (System.nanoTime() - groupStart) / 1_000_000;
-            }
-
-            long transferStart = System.nanoTime();
-            // retrieveArticle is the name of the command of NNTP. A segment is one article.
-            Reader reader = pooled.client().retrieveArticle(NzbUtils.normalizeMessageId(messageId));
-            if (reader == null) {
-                throw new IOException("Segment not found: " + messageId + " (Reply: "
-                        + pooled.client().getReplyCode() + " - " + pooled.client().getReplyString() + ")");
-            }
-
-            byte[] bytes;
-            // The reader must read all the segment. The connection stays in the pool, and the next
-            // command of that connection needs a stream that is at the end of the last answer.
-            try (Reader body = reader) {
-                bytes = new MultiPartDecoder().decode(body);
-            }
-            healthy = true;
-
-            log.debug("segment {}: {} bytes in {} ms = group {} ms + transfer {} ms", messageId,
-                    bytes.length, (System.nanoTime() - startedAt) / 1_000_000, groupMs,
-                    (System.nanoTime() - transferStart) / 1_000_000);
-            return bytes;
-
-        } finally {
-            if (healthy) {
-                pool.release(pooled);
-            } else {
-                // The connection is possibly not in a good state. The pool makes a new one.
-                pool.discard(pooled);
-            }
+        // retrieveArticle is the name of the command of NNTP. A segment is one article.
+        // The reader must read all the segment: its close operation reads the bytes that stay,
+        // thus the connection is at the end of the answer and good for the next command.
+        try (Reader body = pooled.retrieveArticle(NzbUtils.normalizeMessageId(messageId))) {
+            bytes = new MultiPartDecoder().decode(body);
+        } catch (Throwable t) {
+            // The read stopped in the middle of the answer, or the connection has an error. The
+            // catch holds the close operation as well, thus a read of the rest that fails also
+            // arrives here.
+            pool.discard(pooled);
+            throw t;
         }
+        pool.release(pooled);
+
+        log.debug("segment {}: {} bytes in {} ms = transfer {} ms", messageId,
+                bytes.length, (System.nanoTime() - startedAt) / 1_000_000,
+                (System.nanoTime() - transferStart) / 1_000_000);
+        return bytes;
     }
 
     /**
      * Gives the first bytes of one segment, at most {@code maxBytes} of them.
      *
      * <p>A parser reads the first bytes of a segment and moves the cursor over the rest. This
-     * operation gives it those bytes as soon as they arrive, and a thread of the drain reads the
-     * rest of the article. Thus the caller waits for the bytes it reads, and not for a segment
-     * that holds megabytes.</p>
+     * operation gives it those bytes as soon as they arrive.</p>
+     *
+     * <p>A connection that gave a part of an article cannot take another command: the answer of
+     * the server did not arrive at its end. Thus this operation closes it and the pool opens
+     * another one. That costs one connection, and it saves the megabytes of the article that
+     * nobody reads.</p>
      */
     public byte[] fetchPrefix(String messageId, String group, int maxBytes)
-            throws IOException, InterruptedException {
+            throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();
-        UsenetConnectionPool.PooledClient pooled = pool.borrow();
-        boolean handedOver = false;
-        boolean healthy = false;
+        PooledClient pooled = pool.borrow(group);
+        byte[] bytes;
+        boolean readToTheEnd;
 
         try {
-            if (!group.equals(pooled.group())) {
-                if (!pooled.client().selectNewsgroup(group)) {
-                    throw new IOException("Failed to select group: " + group);
-                }
-                pooled.group(group);
-            }
-
-            Reader reader = pooled.client().retrieveArticle(NzbUtils.normalizeMessageId(messageId));
-            if (reader == null) {
-                throw new IOException("Segment not found: " + messageId + " (Reply: "
-                        + pooled.client().getReplyCode() + " - " + pooled.client().getReplyString() + ")");
-            }
-
-            byte[] bytes = new MultiPartDecoder().decodePrefix(reader, maxBytes);
-            if (bytes.length >= maxBytes) {
-                pool.releaseAfterDrain(pooled, reader);
-                handedOver = true;
-            } else {
-                // The segment is smaller than the limit, thus the reader is at the end of the
-                // answer and the connection stays in the pool.
-                healthy = true;
-            }
-
-            log.debug("segment {}: {} bytes of the start in {} ms{}", messageId, bytes.length,
-                    (System.nanoTime() - startedAt) / 1_000_000, handedOver ? " (prefix)" : "");
-            return bytes;
-
-        } finally {
-            if (!handedOver) {
-                if (healthy) {
-                    pool.release(pooled);
-                } else {
-                    pool.discard(pooled);
-                }
-            }
+            Reader reader = pooled.retrieveArticle(NzbUtils.normalizeMessageId(messageId));
+            bytes = new MultiPartDecoder().decodePrefix(reader, maxBytes);
+            // The segment is smaller than the limit, thus the reader arrived at the end of the
+            // answer and the connection stays in the pool.
+            readToTheEnd = bytes.length < maxBytes;
+        } catch (Throwable t) {
+            pool.discard(pooled);
+            throw t;
         }
+
+        if (readToTheEnd) {
+            pool.release(pooled);
+        } else {
+            pool.discard(pooled);
+        }
+
+        log.debug("segment {}: {} bytes of the start in {} ms{}", messageId, bytes.length,
+                (System.nanoTime() - startedAt) / 1_000_000, readToTheEnd ? "" : " (prefix)");
+        return bytes;
     }
 
 }

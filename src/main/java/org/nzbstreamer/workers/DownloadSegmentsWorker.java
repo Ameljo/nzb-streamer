@@ -2,6 +2,8 @@ package org.nzbstreamer.workers;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.exceptions.ArticleUnavaliableException;
+import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.Segment;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.service.SegmentFetcher;
@@ -119,7 +121,8 @@ public class DownloadSegmentsWorker implements Runnable {
     }
 
     /** Downloads one segment and gives the bytes of the file that are in it. */
-    private byte[] bytesOf(VirtualFile.Location location) throws IOException, InterruptedException {
+    private byte[] bytesOf(VirtualFile.Location location)
+            throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();
         byte[] bytes = downloadWithRetry(location, maxRetries);
 
@@ -135,7 +138,7 @@ public class DownloadSegmentsWorker implements Runnable {
     }
 
     private byte[] downloadWithRetry(VirtualFile.Location location, int maxRetries)
-            throws IOException, InterruptedException {
+            throws IOException, InterruptedException, UsenetException {
         Segment segment = location.segment();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -151,7 +154,10 @@ public class DownloadSegmentsWorker implements Runnable {
                 // download gives bytes that nobody reads.
                 log.debug("{}: download of {} stopped", file.filename(), segment.getValue());
                 throw e;
-            } catch (IOException e) {
+            } catch (ArticleUnavaliableException e) {
+                // The server does not have the article. Another attempt gives the same answer.
+                throw e;
+            } catch (IOException | UsenetException e) {
                 if (attempt == maxRetries || Thread.currentThread().isInterrupted()) {
                     throw e;
                 }

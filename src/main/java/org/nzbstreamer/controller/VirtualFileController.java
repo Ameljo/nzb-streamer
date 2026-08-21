@@ -8,7 +8,8 @@ import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.VirtualResource;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.repository.VirtualResourceRepository;
-import org.nzbstreamer.streams.VirtualFileInputStream;
+import org.nzbstreamer.streams.VirtualFileStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,9 @@ public class VirtualFileController {
     @Autowired
     private VirtualResourceRepository virtualResourceRepository;
 
+    @Autowired
+    private VirtualFileStreamFactory streams;
+
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listFiles() {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -40,6 +44,7 @@ public class VirtualFileController {
             entry.put("filename", vf.getFilename());
             entry.put("contentType", vf.getContentType());
             entry.put("size", vf.getSize());
+            entry.put("thumbnailId", vf.getThumbnailId());
             result.add(entry);
         });
         return ResponseEntity.ok(result);
@@ -108,7 +113,8 @@ public class VirtualFileController {
         }
 
         long bytesToWrite = end - start + 1;
-        try (VirtualFileInputStream in = new VirtualFileInputStream(vf); OutputStream out = response.getOutputStream()) {
+        try (VirtualFileStream in = streams.open(vf);
+             OutputStream out = response.getOutputStream()) {
             if (start > 0) in.skip(start);
             byte[] buffer = new byte[65536];
             int read;

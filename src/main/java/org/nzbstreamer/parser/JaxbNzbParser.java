@@ -2,8 +2,6 @@ package org.nzbstreamer.parser;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.nzbstreamer.utils.NzbUtils;
-import org.nzbstreamer.repository.ApplicationContextUtil;
 import org.nzbstreamer.model.Nzb;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
@@ -11,7 +9,6 @@ import jakarta.xml.bind.Unmarshaller;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.Segment;
-import org.nzbstreamer.service.UsenetDownloadService;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -35,31 +32,18 @@ public class JaxbNzbParser implements NzbParser{
         }
     }
 
+    /**
+     * Reads the NZB and makes no connection to the news server.
+     *
+     * <p>The sizes come from the {@code bytes} attributes, which give the size of the article and
+     * not always the size of the decoded segment. A caller that seeks in a post gives the result
+     * to {@link org.nzbstreamer.service.NzbFileSizeResolver}, which reads the first article of
+     * each post and gives the true sizes.</p>
+     */
     @Override
     public Nzb parse(InputStream input) throws NzbParseException {
         try {
             long startedAt = System.nanoTime();
-            Nzb nzb = parseHeadersOnly(input);
-            UsenetDownloadService downloadService = ApplicationContextUtil.getBean(UsenetDownloadService.class);
-            downloadService.populateNzbFileSizes(nzb.getFiles().stream()
-                    .filter(file -> !NzbUtils.sanitizeFileName(file.getSubject()).contains(".nfo"))
-                    .toList());
-            log.info("NZB of {} posts read in {} ms", nzb.getFiles().size(),
-                    (System.nanoTime() - startedAt) / 1_000_000);
-
-            return nzb;
-        } catch (Exception e) {
-            throw new NzbParseException("Failed to parse NZB file", e);
-        }
-    }
-
-    /**
-     * Reads the NZB without a connection to the news server. The sizes come from the {@code bytes}
-     * attributes, which give the size of the article and not always the size of the decoded
-     * segment. Use it to choose a post, not to seek in one.
-     */
-    public Nzb parseHeadersOnly(InputStream input) throws NzbParseException {
-        try {
             Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
             XMLReader reader = createSecureXmlReader();
             SAXSource source = new SAXSource(reader, new InputSource(stripBom(input)));
@@ -67,6 +51,8 @@ public class JaxbNzbParser implements NzbParser{
             for (NzbFile file : nzb.getFiles()) {
                 setSizesFromAttributes(file);
             }
+            log.info("NZB of {} posts read in {} ms", nzb.getFiles().size(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
             return nzb;
         } catch (Exception e) {
             throw new NzbParseException("Failed to parse NZB file", e);

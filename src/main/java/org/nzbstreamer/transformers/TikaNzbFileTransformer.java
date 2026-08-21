@@ -18,11 +18,8 @@ import org.nzbstreamer.rar.RarFileEntry;
 import org.nzbstreamer.rar.tika.RarArchiveCollector;
 import org.nzbstreamer.rar.tika.RarHeaderTikaParser;
 import org.nzbstreamer.rar.tika.RarSourceStream;
-import org.nzbstreamer.repository.ApplicationContextUtil;
-import org.nzbstreamer.service.SegmentFetcher;
-import org.nzbstreamer.streams.VirtualFileRangeStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.utils.NzbUtils;
-import org.springframework.stereotype.Component;
 import org.xml.sax.helpers.DefaultHandler;
 
 import java.io.InputStream;
@@ -46,7 +43,6 @@ import java.util.List;
  * <p>Only a media file goes in the result. {@link NzbUtils#isMediaType(String)} makes this
  * decision.</p>
  */
-@Component
 public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>> {
 
     private static final Logger log = LogManager.getLogger(TikaNzbFileTransformer.class);
@@ -54,16 +50,16 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
     private static final String UNKNOWN_TYPE = "application/octet-stream";
 
     private final Parser parser;
+    private final VirtualFileStreamFactory streams;
     private final Tika tika = new Tika();
 
-    public TikaNzbFileTransformer() {
-        // The default configuration includes the parsers of META-INF/services, thus also the
-        // parser for RAR archives.
-        this(new AutoDetectParser());
+    public TikaNzbFileTransformer(VirtualFileStreamFactory streams) {
+        this(new AutoDetectParser(), streams);
     }
 
-    public TikaNzbFileTransformer(Parser parser) {
+    public TikaNzbFileTransformer(Parser parser, VirtualFileStreamFactory streams) {
         this.parser = parser;
+        this.streams = streams;
     }
 
     /** One post with the headers of its archive. */
@@ -87,8 +83,7 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
 
             VirtualFile postedFile = new VirtualFile(nzbFile.getSize(), name, nzbFile);
             long startedAt = System.nanoTime();
-            try (InputStream stream = new VirtualFileRangeStream(postedFile,
-                    ApplicationContextUtil.getBean(SegmentFetcher.class))) {
+            try (InputStream stream = streams.openRange(postedFile)) {
                 // The stream of a virtual file can move its cursor. The parser must use this
                 // stream and not the stream of Tika, because TikaInputStream.skip reads the bytes.
                 context.set(RarSourceStream.class, new RarSourceStream(stream));
