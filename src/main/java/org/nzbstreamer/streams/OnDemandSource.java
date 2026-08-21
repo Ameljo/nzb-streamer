@@ -1,4 +1,4 @@
-package org.nzbstreamer.streams.proto;
+package org.nzbstreamer.streams;
 
 import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.VirtualFile;
@@ -15,8 +15,6 @@ import java.io.IOException;
  *
  * <p>A segment can hold megabytes. The source takes {@value #PREFIX_BYTES} bytes of it and stops
  * the transfer, and it takes all the segment only when a read needs a byte after them.</p>
- *
- * <p>PROTOTYPE. Nothing uses this package yet.</p>
  */
 public class OnDemandSource implements SegmentSource {
 

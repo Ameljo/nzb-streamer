@@ -1,4 +1,4 @@
-package org.nzbstreamer.streams.proto;
+package org.nzbstreamer.streams;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,8 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>The source starts no worker before the first call of {@link #at(long)}. Thus a caller that
  * makes a stream and reads no byte makes no connection to the news server.</p>
- *
- * <p>PROTOTYPE. Nothing uses this package yet.</p>
  */
 public class PrefetchingSource implements SegmentSource {
 

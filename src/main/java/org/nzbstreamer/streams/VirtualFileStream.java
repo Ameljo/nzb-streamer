@@ -1,4 +1,4 @@
-package org.nzbstreamer.streams.proto;
+package org.nzbstreamer.streams;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,8 +18,6 @@ import java.util.Objects;
  *
  * <p>The stream downloads nothing before the first read. A caller that makes a stream and reads no
  * byte thus makes no connection to the news server.</p>
- *
- * <p>PROTOTYPE. Nothing uses this package yet.</p>
  */
 public class VirtualFileStream extends InputStream {
 

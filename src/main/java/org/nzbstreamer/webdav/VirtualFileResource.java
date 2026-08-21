@@ -7,7 +7,7 @@ import io.milton.resource.GetableResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.streams.VirtualFileInputStream;
+import org.nzbstreamer.streams.VirtualFileStream;
 import org.nzbstreamer.streams.VirtualFileStreamFactory;
 
 import java.io.IOException;
@@ -159,7 +159,7 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
         log.debug("Stream requested for range {} to {}", start, end);
 
         long bytesToWrite = end - start + 1;
-        try (VirtualFileInputStream nzbStream = streams.open(vf)) {
+        try (VirtualFileStream nzbStream = streams.open(vf)) {
             if (start > 0) nzbStream.skip(start);
             int bufferLength = 65536;
             int read;

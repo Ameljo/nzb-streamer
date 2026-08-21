@@ -26,8 +26,8 @@ public class VirtualFileStreamFactory {
      * <p>A worker downloads the segments that come after the position, thus a player that reads
      * the file from one end to the other does not wait for each segment.</p>
      */
-    public VirtualFileInputStream open(VirtualFile file) {
-        return new VirtualFileInputStream(file, fetcher);
+    public VirtualFileStream open(VirtualFile file) {
+        return new VirtualFileStream(file, new PrefetchingSource(file, fetcher));
     }
 
     /**
@@ -36,7 +36,7 @@ public class VirtualFileStreamFactory {
      * <p>A parser that reads a few bytes and moves the cursor over the rest uses this one: it
      * downloads the segments that hold the bytes that the parser reads, and no others.</p>
      */
-    public VirtualFileRangeStream openRange(VirtualFile file) {
-        return new VirtualFileRangeStream(file, fetcher);
+    public VirtualFileStream openRange(VirtualFile file) {
+        return new VirtualFileStream(file, new OnDemandSource(file, fetcher));
     }
 }

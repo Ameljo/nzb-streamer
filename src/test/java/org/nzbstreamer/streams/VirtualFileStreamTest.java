@@ -21,7 +21,7 @@ import static org.nzbstreamer.model.VirtualFileTestData.fileOfTwoVolumes;
  * Tests the stream with the segments of {@link VirtualFileTestData}. The test gives the bytes of
  * the segments, thus it needs no news server.
  */
-class VirtualFileInputStreamTest {
+class VirtualFileStreamTest {
 
     /** A fetcher that gives the segments of the test and counts the downloads. */
     private static final class TestSegments extends SegmentFetcher {
@@ -45,7 +45,8 @@ class VirtualFileInputStreamTest {
         TestSegments segments = new TestSegments();
         byte[] actual;
 
-        try (VirtualFileInputStream stream = new VirtualFileInputStream(fileOfTwoVolumes(), segments)) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream = new VirtualFileStream(file, new PrefetchingSource(file, segments))) {
             actual = stream.readAllBytes();
         }
 
@@ -59,8 +60,9 @@ class VirtualFileInputStreamTest {
     void crossesTheBoundaryOfTheVolumes() throws IOException {
         byte[] expected = expectedBytes();
 
-        try (VirtualFileInputStream stream =
-                     new VirtualFileInputStream(fileOfTwoVolumes(), new TestSegments())) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream =
+                     new VirtualFileStream(file, new PrefetchingSource(file, new TestSegments()))) {
             stream.seek(CHUNK_LENGTH - 2);
 
             assertEquals(expected[(int) CHUNK_LENGTH - 2] & 0xFF, stream.read());
@@ -75,7 +77,8 @@ class VirtualFileInputStreamTest {
     void seekDownloadsNothing() throws IOException {
         TestSegments segments = new TestSegments();
 
-        try (VirtualFileInputStream stream = new VirtualFileInputStream(fileOfTwoVolumes(), segments)) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream = new VirtualFileStream(file, new PrefetchingSource(file, segments))) {
             stream.seek(40);
             stream.skip(5);
             assertEquals(0, segments.downloaded.size(), "a move must not download a segment");
@@ -90,8 +93,9 @@ class VirtualFileInputStreamTest {
     void readAfterSeek() throws IOException {
         byte[] expected = expectedBytes();
 
-        try (VirtualFileInputStream stream =
-                     new VirtualFileInputStream(fileOfTwoVolumes(), new TestSegments())) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream =
+                     new VirtualFileStream(file, new PrefetchingSource(file, new TestSegments()))) {
             stream.seek(30);
             byte[] actual = stream.readNBytes(10);
 
@@ -104,8 +108,9 @@ class VirtualFileInputStreamTest {
     @Test
     @DisplayName("mark and reset move the cursor to the same position")
     void markAndReset() throws IOException {
-        try (VirtualFileInputStream stream =
-                     new VirtualFileInputStream(fileOfTwoVolumes(), new TestSegments())) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream =
+                     new VirtualFileStream(file, new PrefetchingSource(file, new TestSegments()))) {
             stream.mark(100);
             byte[] first = stream.readNBytes(20);
             stream.reset();
@@ -118,8 +123,9 @@ class VirtualFileInputStreamTest {
     @Test
     @DisplayName("the stream stops at the end of the file")
     void stopsAtTheEnd() throws IOException {
-        try (VirtualFileInputStream stream =
-                     new VirtualFileInputStream(fileOfTwoVolumes(), new TestSegments())) {
+        VirtualFile file = fileOfTwoVolumes();
+        try (VirtualFileStream stream =
+                     new VirtualFileStream(file, new PrefetchingSource(file, new TestSegments()))) {
             assertEquals(CHUNK_LENGTH * 2, stream.readAllBytes().length);
             assertEquals(-1, stream.read());
         }

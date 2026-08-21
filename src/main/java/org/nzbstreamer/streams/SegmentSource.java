@@ -1,4 +1,4 @@
-package org.nzbstreamer.streams.proto;
+package org.nzbstreamer.streams;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -6,11 +6,9 @@ import java.io.IOException;
 /**
  * Gives the bytes of a file around a position.
  *
- * <p>This is the part that {@code VirtualFileInputStream} and {@code VirtualFileRangeStream} do
- * differently. Everything else of a stream — the position, the mark, the skip operation and the
- * read operations — is the same in both, and {@link VirtualFileStream} holds it one time.</p>
- *
- * <p>PROTOTYPE. Nothing uses this package yet.</p>
+ * <p>This is the part that {@link OnDemandSource} and {@link PrefetchingSource} do differently.
+ * Everything else of a stream — the position, the mark, the skip operation and the read
+ * operations — is the same in both, and {@link VirtualFileStream} holds it one time.</p>
  */
 public interface SegmentSource extends Closeable {
 

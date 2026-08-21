@@ -8,9 +8,8 @@ import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.VirtualResource;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.repository.VirtualResourceRepository;
-import org.nzbstreamer.service.SegmentFetcher;
-import org.nzbstreamer.streams.proto.PrefetchingSource;
-import org.nzbstreamer.streams.proto.VirtualFileStream;
+import org.nzbstreamer.streams.VirtualFileStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,10 +32,8 @@ public class VirtualFileController {
     @Autowired
     private VirtualResourceRepository virtualResourceRepository;
 
-    // PROTOTYPE: this endpoint makes the stream of org.nzbstreamer.streams.proto. The rest of the
-    // application keeps VirtualFileInputStream and VirtualFileRangeStream.
     @Autowired
-    private SegmentFetcher fetcher;
+    private VirtualFileStreamFactory streams;
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listFiles() {
@@ -116,7 +113,7 @@ public class VirtualFileController {
         }
 
         long bytesToWrite = end - start + 1;
-        try (VirtualFileStream in = new VirtualFileStream(vf, new PrefetchingSource(vf, fetcher));
+        try (VirtualFileStream in = streams.open(vf);
              OutputStream out = response.getOutputStream()) {
             if (start > 0) in.skip(start);
             byte[] buffer = new byte[65536];
