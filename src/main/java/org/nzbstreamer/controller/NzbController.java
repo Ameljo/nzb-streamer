@@ -4,11 +4,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.Nzb;
-import org.nzbstreamer.model.NzbFile;
-import org.nzbstreamer.parser.NzbParser;
+import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.parser.NzbParserFactory;
+import org.nzbstreamer.service.NzbFileSizeResolver;
 import org.nzbstreamer.service.NzbProcessingService;
-import org.nzbstreamer.service.UsenetDownloadService;
+import org.nzbstreamer.streams.VirtualFileStream;
+import org.nzbstreamer.streams.VirtualFileStreamFactory;
+import org.nzbstreamer.transformers.NzbTransformerFactory;
+import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -26,7 +29,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -45,7 +50,13 @@ public class NzbController {
     private NzbProcessingService nzbProcessingService;
 
     @Autowired
-    private UsenetDownloadService usenetDownloadService;
+    private NzbFileSizeResolver sizeResolver;
+
+    @Autowired
+    private NzbTransformerFactory nzbTransformerFactory;
+
+    @Autowired
+    private VirtualFileStreamFactory streams;
 
     /**
      * Upload and process an NZB file via multipart form
@@ -245,47 +256,71 @@ public class NzbController {
         }
     }
 
-    @PostMapping(value = "/download", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)    public ResponseEntity<Map<String, Object>> download(@RequestParam("file") MultipartFile file) {
+    /**
+     * Downloads every media file of an NZB to the local {@code downloads} folder, under its real
+     * name, decoded through the same {@link VirtualFileStreamFactory#openStream} path that WebDAV
+     * and the player use. Nothing is saved to the database. For checking the bytes of a file
+     * directly — a hex viewer or a local player, outside HTTP ranges and outside the player's own
+     * probing.
+     */
+    @PostMapping(value = "/download", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> download(@RequestParam("file") MultipartFile file)
+            throws IOException {
+        if (file.isEmpty()) {
+            log.warn("Download attempt with empty file");
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "File is empty");
+            return ResponseEntity.badRequest().body(response);
+        }
+        return download(file.getInputStream());
+    }
+
+    @PostMapping(value = "/download", consumes = {"application/x-nzb", "application/xml", "text/xml"})
+    public ResponseEntity<Map<String, Object>> downloadRaw(@RequestBody byte[] nzbContent) {
+        if (nzbContent == null || nzbContent.length == 0) {
+            log.warn("Download attempt with empty content");
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "File content is empty");
+            return ResponseEntity.badRequest().body(response);
+        }
+        return download(new ByteArrayInputStream(nzbContent));
+    }
+
+    private ResponseEntity<Map<String, Object>> download(InputStream inputStream) {
         Map<String, Object> response = new HashMap<>();
-
         try {
-            // Validate content
-            if (file.isEmpty()) {
-                log.warn("Upload attempt with empty file");
-                response.put("success", false);
-                response.put("message", "File is empty");
-                return ResponseEntity.badRequest().body(response);
+            Nzb nzb = NzbParserFactory.createParser().parse(inputStream);
+            // A post of an nfo file gets no size: it holds one small article, and a connection for
+            // it costs more than the size that it gives. See NzbFileSizeResolver.
+            sizeResolver.resolve(nzb.getFiles().stream()
+                    .filter(f -> !NzbUtils.sanitizeFileName(f.getSubject()).contains(".nfo"))
+                    .toList());
+            List<VirtualFile> files = nzbTransformerFactory.getTransformer(nzb).transform(nzb);
+
+            File downloadsDir = new File("downloads");
+            if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
+                throw new IOException("Cannot create the folder " + downloadsDir.getAbsolutePath());
             }
 
-            String filename = file.getOriginalFilename();
-
-            log.info("Received raw NZB file upload request: {}", filename);
-
-            // Process the NZB file
-            InputStream inputStream = file.getInputStream();
-            NzbParser parser = NzbParserFactory.createParser();
-            Nzb nzb = parser.parse(inputStream);
-
-
-            int i=1;
-            for (NzbFile nzbFile : nzb.getFiles()) {
-                if (i > 1)
-                    filename = "sample.part" + i + ".rar";
-                else
-                    filename = "sample.part1.rar";
-                i++;
-                File downloadedNzbFile = new File("downloads/" + filename );
-                try(OutputStream output = new FileOutputStream(downloadedNzbFile)) {
-                    usenetDownloadService.downloadFile(nzbFile, output);
+            List<String> saved = new ArrayList<>();
+            for (VirtualFile vf : files) {
+                File target = new File(downloadsDir, vf.filename());
+                log.info("Downloading {} ({} bytes) to {}", vf.filename(), vf.getSize(), target);
+                try (VirtualFileStream in = streams.openStream(vf);
+                     OutputStream out = new FileOutputStream(target)) {
+                    in.transferTo(out);
                 }
+                saved.add(target.getPath());
             }
-            // Build success response
-            response.put("success", true);
-            response.put("message", "NZB file processed successfully");
-            response.put("filename", filename);
-            response.put("filesCount", nzb.getFiles().size());
 
-            log.info("Successfully processed raw NZB file: {} with {} files", filename, nzb.getFiles().size());
+            response.put("success", true);
+            response.put("message", "NZB file downloaded successfully");
+            response.put("files", saved);
+            response.put("filesCount", files.size());
+
+            log.info("Successfully downloaded {} files of {}", files.size(), nzb.getFiles().size());
 
             return ResponseEntity.ok(response);
 
@@ -296,7 +331,7 @@ public class NzbController {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
 
         } catch (Exception e) {
-            log.error("Unexpected error processing NZB file", e);
+            log.error("Unexpected error downloading NZB file", e);
             response.put("success", false);
             response.put("message", "Unexpected error: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

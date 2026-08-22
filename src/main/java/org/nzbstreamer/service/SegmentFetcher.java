@@ -3,12 +3,14 @@ package org.nzbstreamer.service;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.decoder.MultiPartDecoder;
+import org.nzbstreamer.exceptions.ArticleUnavaliableException;
 import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Downloads one segment and gives its bytes after the decode operation.
@@ -61,6 +63,31 @@ public class SegmentFetcher {
                 bytes.length, (System.nanoTime() - startedAt) / 1_000_000,
                 (System.nanoTime() - transferStart) / 1_000_000);
         return bytes;
+    }
+
+    public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer, int bufferSize, int skip, int trim) throws IOException, UsenetException, InterruptedException {
+        long startedAt = System.nanoTime();
+        PooledClient pooled = pool.borrow(group);
+        long transferStart = System.nanoTime();
+        int bytes;
+
+        // retrieveArticle is the name of the command of NNTP. A segment is one article.
+        // The reader must read all the segment: its close operation reads the bytes that stay,
+        // thus the connection is at the end of the answer and good for the next command.
+        try (Reader body = pooled.retrieveArticle(NzbUtils.normalizeMessageId(messageId))) {
+            bytes = new MultiPartDecoder().decode(body, buffer, bufferSize, skip, trim);
+        } catch (Throwable t) {
+            // The read stopped in the middle of the answer, or the connection has an error. The
+            // catch holds the close operation as well, thus a read of the rest that fails also
+            // arrives here.
+            pool.discard(pooled);
+            throw t;
+        }
+        pool.release(pooled);
+
+//        log.debug("segment {}: {} bytes in {} ms = transfer {} ms", messageId,
+//                bytes, (System.nanoTime() - startedAt) / 1_000_000,
+//                (System.nanoTime() - transferStart) / 1_000_000);
     }
 
     /**

@@ -2,6 +2,7 @@ package org.nzbstreamer.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.catalina.connector.ClientAbortException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
@@ -91,6 +92,8 @@ public class VirtualFileController {
         long end = fileSize - 1;
 
         String rangeHeader = request.getHeader("Range");
+        log.debug("{}: {} requested, Range: {}", vf.filename(), request.getMethod(),
+                rangeHeader == null ? "none" : rangeHeader);
         if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
             String[] parts = rangeHeader.substring(6).split("-");
             try {
@@ -112,16 +115,27 @@ public class VirtualFileController {
             response.setContentLengthLong(fileSize);
         }
 
+        if ("HEAD".equalsIgnoreCase(request.getMethod())) {
+            // Headers are already set above. A HEAD request wants only those, and nothing about the
+            // segments: opening a stream here would download the file just to discard the bytes.
+            return;
+        }
+
         long bytesToWrite = end - start + 1;
-        try (VirtualFileStream in = streams.open(vf);
+        byte[] buffer = new byte[65536];
+        try (VirtualFileStream in = streams.openStream(vf, buffer.length);
              OutputStream out = response.getOutputStream()) {
             if (start > 0) in.skip(start);
-            byte[] buffer = new byte[65536];
             int read;
             while (bytesToWrite > 0 && (read = in.read(buffer, 0, (int) Math.min(buffer.length, bytesToWrite))) != -1) {
                 out.write(buffer, 0, read);
                 bytesToWrite -= read;
             }
+        } catch (ClientAbortException e) {
+            // The player closed this connection itself — normal when it seeks (it opens a new
+            // ranged request elsewhere) or stops. Not a failure of this stream.
+            log.debug("{}: the player closed the connection at {} of {}", vf.filename(),
+                    fileSize - bytesToWrite, fileSize);
         } catch (Exception e) {
             log.error("Error streaming file {}: {}", id, e.getMessage(), e);
         }

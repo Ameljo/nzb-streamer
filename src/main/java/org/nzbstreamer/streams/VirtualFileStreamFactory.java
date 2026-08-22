@@ -30,6 +30,16 @@ public class VirtualFileStreamFactory {
         return new VirtualFileStream(file, new PrefetchingSource(file, fetcher));
     }
 
+    public VirtualFileStream openStream(VirtualFile file) {
+        return new VirtualFileStream(file, new StreamingSource(file, fetcher));
+    }
+
+    /** A stream that reads and downloads in chunks of the given size, instead of the default. */
+    public VirtualFileStream openStream(VirtualFile file, int bufferSize) {
+        return new VirtualFileStream(file,
+                new StreamingSource(file, fetcher, StreamingSource.MAX_RETRIES, bufferSize));
+    }
+
     /**
      * A stream that downloads a segment when a read needs it, and nothing before that.
      *

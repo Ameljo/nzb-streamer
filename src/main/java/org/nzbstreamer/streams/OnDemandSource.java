@@ -16,7 +16,7 @@ import java.io.IOException;
  * <p>A segment can hold megabytes. The source takes {@value #PREFIX_BYTES} bytes of it and stops
  * the transfer, and it takes all the segment only when a read needs a byte after them.</p>
  */
-public class OnDemandSource implements SegmentSource {
+public class OnDemandSource extends AbstractSegmentSource {
 
     /** The number of bytes of the first read of a segment. */
     private static final int PREFIX_BYTES = 64 * 1024;
@@ -36,7 +36,7 @@ public class OnDemandSource implements SegmentSource {
     }
 
     @Override
-    public Window at(long position) throws IOException {
+    protected Window fetchWindow(long position) throws IOException {
         if (!file.hasNext(position)) {
             return null;
         }
@@ -71,8 +71,8 @@ public class OnDemandSource implements SegmentSource {
     }
 
     @Override
-    public void moveTo(long position) {
-        // Nothing is in flight. The next call of at() downloads what the position needs.
+    protected void onSeek(long position) {
+        // Nothing is in flight. The next call of fetchWindow() downloads what the position needs.
     }
 
     @Override
