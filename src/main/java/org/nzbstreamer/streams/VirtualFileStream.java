@@ -6,15 +6,14 @@ import org.nzbstreamer.model.VirtualFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Objects;
 
 /**
  * Reads the bytes of a {@link VirtualFile}.
  *
- * <p>The stream reads a sequence of bytes. It does not know the segments, the chunks, the volumes
- * or the archive: it asks its {@link SegmentSource} for the bytes around a position. The source
- * says how it finds them — a worker that reads in advance for a player, or a download for each
- * read for a parser of headers.</p>
+ * <p>The stream does not know the segments, the chunks, the volumes or the archive: it forwards
+ * every read to its {@link SegmentSource}, which owns the window of bytes and the cursor inside
+ * it. The source says how it finds the bytes — a worker that reads in advance for a player, or a
+ * download for each read for a parser of headers.</p>
  *
  * <p>The stream downloads nothing before the first read. A caller that makes a stream and reads no
  * byte thus makes no connection to the news server.</p>
@@ -29,9 +28,6 @@ public class VirtualFileStream extends InputStream {
     private long position;
     private long markPosition;
 
-    /** The part of the file that the stream holds now, or null. */
-    private SegmentSource.Window window;
-
     public VirtualFileStream(VirtualFile file, SegmentSource source) {
         this.file = file;
         this.source = source;
@@ -39,76 +35,35 @@ public class VirtualFileStream extends InputStream {
 
     @Override
     public int read() throws IOException {
-        if (!load()) {
+        if (!file.hasNext(position)) {
             return -1;
         }
-        int index = (int) (position - window.start());
-        position++;
-        return window.data()[index] & 0xFF;
+        log.trace("{}: read at {}", file.filename(), position);
+        int b = source.read();
+        if (b >= 0) {
+            position++;
+        }
+        return b;
     }
 
-    /**
-     * Reads many bytes at one time.
-     *
-     * <p>Without this operation {@link InputStream} reads one byte for each call of
-     * {@link #read()}. A player moves gigabytes through a buffer of 64 KB, thus that costs one
-     * call for each byte. This operation copies what the window holds, and it gives less than
-     * {@code length} bytes when the window ends before that: a caller of a stream reads in a
-     * loop.</p>
-     */
     @Override
     public int read(byte[] buffer, int offset, int length) throws IOException {
-        Objects.checkFromIndexSize(offset, length, buffer.length);
-        if (length == 0) {
-            return 0;
-        }
-        if (!load()) {
+        if (!file.hasNext(position)) {
             return -1;
         }
-        int index = (int) (position - window.start());
-        int count = (int) Math.min(length, window.end() - position);
-        System.arraycopy(window.data(), index, buffer, offset, count);
-        position += count;
+        log.trace("{}: read at {}, up to {} bytes", file.filename(), position, length);
+        int count = source.read(buffer, offset, length);
+        if (count > 0) {
+            position += count;
+        }
         return count;
     }
 
-    /**
-     * Gives the stream a window that holds the position.
-     *
-     * @return false when no byte of the file is at the position
-     */
-    private boolean load() throws IOException {
-        if (!file.hasNext(position)) {
-            return false;
-        }
-        if (window != null && window.holds(position)) {
-            return true;
-        }
-        window = source.at(position);
-        if (window == null || !window.holds(position)) {
-            log.debug("{}: no bytes at position {} of {}", file.filename(), position,
-                    file.getSize());
-            window = null;
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Moves the cursor.
-     *
-     * <p>A move inside the window that the stream holds keeps that window and tells the source
-     * nothing. Tika marks the stream, reads a few bytes and moves back; without this, that move
-     * downloads again the bytes that are already in the memory.</p>
-     */
+    /** Moves the cursor. The source decides whether that needs a new download. */
     public void seek(long newPosition) {
-        if (window != null && window.holds(newPosition)) {
-            position = newPosition;
-            return;
-        }
+        log.debug("{}: seek from {} to {}", file.filename(), position, newPosition);
         position = newPosition;
-        window = null;
-        source.moveTo(newPosition);
+        source.seek(newPosition);
     }
 
     @Override

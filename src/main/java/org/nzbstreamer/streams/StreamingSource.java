@@ -4,36 +4,27 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.service.SegmentFetcher;
+import org.nzbstreamer.workers.DownloadSegmentsChunksWorker;
 import org.nzbstreamer.workers.DownloadSegmentsWorker;
 
 import java.io.IOException;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Downloads the segments that come after the position, on a worker of its own.
- *
- * <p>A player reads a file from one end to the other. This source thus reads segments in advance
- * and puts them in a queue, and a read takes the bytes that already arrived. This is the source of
- * the playback.</p>
- *
- * <p>The source starts no worker before the first call of {@link #fetchWindow(long)}. Thus a
- * caller that makes a stream and reads no byte makes no connection to the news server.</p>
- */
-public class PrefetchingSource extends AbstractSegmentSource {
+public class StreamingSource extends AbstractSegmentSource {
 
-    private static final Logger log = LogManager.getLogger(PrefetchingSource.class);
+    private static final Logger log = LogManager.getLogger(StreamingSource.class);
 
-    private static final int MAX_RETRIES = 3;
+    static final int MAX_RETRIES = 3;
     private static final int PARALLEL_DOWNLOADS = 8;
+    static final int BUFFER_SIZE = 64 * 1024;
 
     private final VirtualFile file;
     private final SegmentFetcher fetcher;
     private final int maxRetries;
-    private final int parallelDownloads;
+    private final int bufferSize;
     private final String owner = callerClass();
 
     /**
@@ -42,50 +33,75 @@ public class PrefetchingSource extends AbstractSegmentSource {
      * <p>A move of the cursor makes a new worker with new objects. Thus this class does not wait
      * for the old worker: that worker writes in its own queue, and nobody reads it.</p>
      */
-    private BlockingQueue<Future<byte[]>> bufferQueue = new LinkedBlockingQueue<>();
+    private BlockingQueue<byte[]> bufferQueue = null;
     private AtomicBoolean endOfSegments = new AtomicBoolean(false);
     private AtomicBoolean running = new AtomicBoolean(false);
+    private int queueSize = 0;
 
     /** The position of the file for the first byte that the next window will hold. */
     private long nextStart;
     private boolean started;
 
-    public PrefetchingSource(VirtualFile file, SegmentFetcher fetcher) {
-        this(file, fetcher, MAX_RETRIES, PARALLEL_DOWNLOADS);
+    /**
+     * Gives each worker of every source a unique id, so the logs can tell them apart even across
+     * concurrent requests for the same file. A counter on one source would restart at 1 for every
+     * request, and every request's "worker 1" would look like the same worker in the logs.
+     */
+    private static final AtomicInteger WORKER_SEQ = new AtomicInteger();
+
+    private int currentWorkerId;
+
+    public StreamingSource(VirtualFile file, SegmentFetcher fetcher) {
+        this(file, fetcher, MAX_RETRIES, BUFFER_SIZE);
     }
 
-    public PrefetchingSource(VirtualFile file, SegmentFetcher fetcher, int maxRetries,
-                             int parallelDownloads) {
+    public StreamingSource(VirtualFile file, SegmentFetcher fetcher, int maxRetries) {
+        this(file, fetcher, maxRetries, BUFFER_SIZE);
+    }
+
+    public StreamingSource(VirtualFile file, SegmentFetcher fetcher, int maxRetries, int bufferSize) {
         this.file = file;
         this.fetcher = fetcher;
         this.maxRetries = maxRetries;
-        this.parallelDownloads = parallelDownloads;
+        this.bufferSize = bufferSize;
+        this.queueSize = maxChunksAhead(file, bufferSize);
+    }
+
+    /**
+     * Chunks of 6 segments, sized from this file's own first segment. Falls back to one chunk
+     * per segment when the file has no segments to measure -- there is nothing to download
+     * ahead of in that case, so the exact size does not matter.
+     */
+    private static int maxChunksAhead(VirtualFile file, int bufferSize) {
+        boolean hasSegments = !file.getChunks().isEmpty()
+                && !file.getChunks().getFirst().segments().isEmpty();
+        long segmentSize = hasSegments
+                ? file.getChunks().getFirst().segments().getFirst().getSize()
+                : bufferSize;
+        return Math.toIntExact((segmentSize * 6) / bufferSize) + 1;
     }
 
     @Override
     protected Window fetchWindow(long position) throws IOException {
         if (!started || position != nextStart) {
-            startWorkerAt(position);
+            log.debug("{}: worker {} was serving this source (started={}, nextStart={}), replacing"
+                    + " it at {}", file.filename(), currentWorkerId, started, nextStart, position);
+            startWorkerAt(position, bufferSize);
         }
         // The worker stopped and the queue is empty. No more bytes come, thus a wait here would
         // not stop.
         if (endOfSegments.get() && bufferQueue.isEmpty()) {
-            log.error("{}: the worker stopped at position {} of {}, thus the file is not complete",
-                    file.filename(), position, file.getSize());
+            log.error("{}: worker {} stopped at position {} of {}, thus the file is not complete",
+                    file.filename(), currentWorkerId, position, file.getSize());
             return null;
         }
 
         byte[] bytes;
         try {
-            bytes = bufferQueue.take().get();
+            bytes = bufferQueue.take();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while waiting for data", e);
-        } catch (ExecutionException e) {
-            log.error("{}: cannot download the segment of position {} of {}", file.filename(),
-                    position, file.getSize(), e.getCause());
-            throw new IOException("Cannot download the segment of position " + position,
-                    e.getCause());
         }
 
         nextStart = position + bytes.length;
@@ -113,18 +129,20 @@ public class PrefetchingSource extends AbstractSegmentSource {
      * flag, and it writes in its own queue. Thus a move of the cursor gives the first bytes of the
      * new position after one download, and not after two downloads.</p>
      */
-    private void startWorkerAt(long startPosition) {
+    private void startWorkerAt(long startPosition, int bufferSize) {
         stopWorker();
 
-        bufferQueue = new LinkedBlockingQueue<>();
+        bufferQueue = new LinkedBlockingQueue<>(queueSize);
         endOfSegments = new AtomicBoolean(false);
         running = new AtomicBoolean(true);
         nextStart = startPosition;
         started = true;
+        currentWorkerId = WORKER_SEQ.incrementAndGet();
 
-        Thread worker = new Thread(new DownloadSegmentsWorker(startPosition, file, bufferQueue,
-                endOfSegments, running, fetcher, maxRetries, parallelDownloads, owner),
-                "worker-" + owner);
+        log.debug("{}: starting worker {} at {}", file.filename(), currentWorkerId, startPosition);
+        Thread worker = new Thread(new DownloadSegmentsChunksWorker(currentWorkerId, startPosition,
+                file, bufferQueue, endOfSegments, running, fetcher, maxRetries, bufferSize),
+                "worker-" + owner + "-" + currentWorkerId);
         worker.setDaemon(true);
         worker.start();
     }
@@ -132,10 +150,9 @@ public class PrefetchingSource extends AbstractSegmentSource {
     /** Tells the worker to stop. It does not wait for it. */
     private void stopWorker() {
         running.set(false);
-        for (Future<byte[]> segment : bufferQueue) {
-            segment.cancel(true);
+        if (bufferQueue != null) {
+            bufferQueue.clear();
         }
-        bufferQueue.clear();
     }
 
     /** The class that made this source, for the logs: the transformer, the scanner, a controller. */

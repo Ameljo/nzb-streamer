@@ -17,6 +17,7 @@ public class Segments {
     private UUID id;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("number")
     @XmlElement(required = true)
     protected List<Segment> segment;
 

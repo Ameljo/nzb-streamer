@@ -25,6 +25,8 @@ public class UsenetConnectionPool {
 
     private static final Logger log = LogManager.getLogger(UsenetConnectionPool.class);
 
+    private static final long SLOW_BORROW_MS = 1_000;
+
     private final GenericObjectPool<PooledClient> pool;
 
     public UsenetConnectionPool(GenericObjectPool<PooledClient> pool) {
@@ -76,8 +78,11 @@ public class UsenetConnectionPool {
 
     /** Takes a connection and gives the exceptions of this application, not those of the pool. */
     private PooledClient borrow() throws UsenetException, InterruptedException {
+        long startedAt = System.nanoTime();
         try {
-            return pool.borrowObject();
+            PooledClient pooled = pool.borrowObject();
+            logBorrowTime(startedAt);
+            return pooled;
         } catch (UsenetException e) {
             // The factory threw it and the pool gives it back as it is.
             throw e;
@@ -85,9 +90,23 @@ public class UsenetConnectionPool {
             Thread.currentThread().interrupt();
             throw e;
         } catch (NoSuchElementException e) {
+            long waitedMs = (System.nanoTime() - startedAt) / 1_000_000;
+            log.warn("waited {} ms for a connection and got none, {} active of {} — the pool is"
+                    + " exhausted", waitedMs, pool.getNumActive(), pool.getMaxTotal());
             throw new PoolExhaustedException(pool.getMaxTotal(), e);
         } catch (Exception e) {
             throw new UsenetException("Cannot take a connection from the pool", e);
+        }
+    }
+
+    private void logBorrowTime(long startedAt) {
+        long waitedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        if (waitedMs > SLOW_BORROW_MS) {
+            log.warn("waited {} ms for a connection, {} active of {} — the pool is the"
+                    + " bottleneck", waitedMs, pool.getNumActive(), pool.getMaxTotal());
+        } else if (waitedMs > 0) {
+            log.debug("waited {} ms for a connection, {} active of {}", waitedMs,
+                    pool.getNumActive(), pool.getMaxTotal());
         }
     }
 }

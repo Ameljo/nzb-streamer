@@ -4,11 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 
 /**
- * Gives the bytes of a file around a position.
+ * Gives the bytes of a file, one after another.
  *
- * <p>This is the part that {@link OnDemandSource} and {@link PrefetchingSource} do differently.
- * Everything else of a stream — the position, the mark, the skip operation and the read
- * operations — is the same in both, and {@link VirtualFileStream} holds it one time.</p>
+ * <p>This is the part that {@link OnDemandSource} and {@link PrefetchingSource} do differently:
+ * where the bytes come from, and how far ahead they download. Everything else — the cursor and
+ * what counts as "still in the window I already have" — is up to each of them.</p>
  */
 public interface SegmentSource extends Closeable {
 
@@ -33,21 +33,20 @@ public interface SegmentSource extends Closeable {
         }
     }
 
-    /**
-     * Gives a window that holds the position.
-     *
-     * <p>The source downloads what it needs. It gives null when no byte of the file is at that
-     * position.</p>
-     */
-    Window at(long position) throws IOException;
+    /** The next byte of the file, or -1 at the end. */
+    int read() throws IOException;
 
     /**
-     * Says that the reader moved to a position that its window does not hold.
+     * Reads many bytes at one time.
      *
-     * <p>A source that downloads in advance stops that work: the bytes that come are the bytes of
-     * the position of before, and nobody reads them.</p>
+     * <p>Without this operation a caller reads one byte for each call of {@link #read()}. This
+     * operation gives fewer than {@code length} bytes when the source has fewer than that ready,
+     * and -1 only at the end of the file: a caller reads in a loop.</p>
      */
-    void moveTo(long position);
+    int read(byte[] buffer, int offset, int length) throws IOException;
+
+    /** Moves the cursor. */
+    void seek(long newPosition);
 
     @Override
     void close();
