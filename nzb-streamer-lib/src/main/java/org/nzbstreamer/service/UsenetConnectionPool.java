@@ -50,6 +50,11 @@ public class UsenetConnectionPool implements AutoCloseable {
         int size = config.poolSize();
 
         GenericObjectPoolConfig<PooledClient> poolConfig = new GenericObjectPoolConfig<>();
+        // JMX needs java.lang.management, which is part of the full JDK's management API and does
+        // not exist on Android at all -- not a case core library desugaring can paper over, since
+        // it is not an Android platform API either. Any pool built with JMX left on (Commons
+        // Pool2's default) crashes with a NoClassDefFoundError the instant it is constructed there.
+        poolConfig.setJmxEnabled(false);
         poolConfig.setMaxTotal(size);
         // A connection that is free stays in the pool. Only the evictor closes it.
         poolConfig.setMaxIdle(size);
