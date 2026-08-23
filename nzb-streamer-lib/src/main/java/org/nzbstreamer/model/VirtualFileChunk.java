@@ -1,16 +1,6 @@
 package org.nzbstreamer.model;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-
 import java.util.List;
-import java.util.UUID;
 
 /**
  * A continuous part of a {@link VirtualFile}. One chunk is in one post.
@@ -21,24 +11,14 @@ import java.util.UUID;
  * <p>The chunk gives the segments of that post that hold its bytes. The segments are always in
  * sequence, thus the chunk keeps the first index and the last index and not a list.</p>
  */
-@Entity
-@Table(name = "virtual_file_chunks")
 public class VirtualFileChunk {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    // No REMOVE: two files of one archive use the same post.
-    @ManyToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     private NzbFile nzbFile;
 
     /** The position of the first byte of this chunk in the file. */
     private long fileStart;
 
     /** The position of the first byte of the file in the first segment of this chunk. */
-    // offset is a reserved word of PostgreSQL.
-    @Column(name = "\"offset\"")
     private long offset;
 
     /** The number of bytes of the file in this chunk. */
@@ -80,10 +60,6 @@ public class VirtualFileChunk {
     /** The newsgroup of the post. A download needs it with the address of the segment. */
     public String group() {
         return nzbFile.getGroups().getFirst();
-    }
-
-    public UUID getId() {
-        return id;
     }
 
     public NzbFile getNzbFile() {

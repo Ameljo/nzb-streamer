@@ -1,20 +1,7 @@
 package org.nzbstreamer.model;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderColumn;
-import jakarta.persistence.Table;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * A file that a player can read. Its bytes are in one post or in many posts.
@@ -23,17 +10,11 @@ import java.util.UUID;
  * {@link #locate(long)} changes a position of the file into a position in a segment. Thus a caller
  * does not know the chunks, the volumes or the archive.</p>
  *
- * <p>The chunks use the fetch type EAGER. Thus a file that comes from the database gives its bytes
- * also outside a session, and a file that a caller makes with {@code new} works in the same way.
- * The application can use a file before it saves it, or without a save operation.</p>
+ * <p>This class has no identity of its own -- it is a plain value built from a list of chunks.
+ * An application that persists virtual files owns its own identity (an id, a thumbnail
+ * reference, ...) on its own entity type and maps to/from this class.</p>
  */
-@Entity
-@Table(name = "virtual_files")
 public class VirtualFile {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
 
     private String filename;
 
@@ -41,15 +22,6 @@ public class VirtualFile {
 
     private Long size;
 
-    /** ID of a thumbnail image {@link VirtualFile} for this file, or {@code null}. */
-    @Column(name = "thumbnail_id")
-    private UUID thumbnailId;
-
-    // JoinColumn and not a table of the relation: the order column then goes in the table of the
-    // chunks.
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "virtual_file_id")
-    @OrderColumn(name = "chunk_order")
     private List<VirtualFileChunk> chunks = new ArrayList<>();
 
     public VirtualFile() {
@@ -169,21 +141,5 @@ public class VirtualFile {
 
     public void setChunks(List<VirtualFileChunk> chunks) {
         this.chunks = chunks;
-    }
-
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getThumbnailId() {
-        return thumbnailId;
-    }
-
-    public void setThumbnailId(UUID thumbnailId) {
-        this.thumbnailId = thumbnailId;
     }
 }
