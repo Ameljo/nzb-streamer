@@ -1,19 +1,16 @@
 package org.nzbstreamer.model;
 
-import jakarta.persistence.*;
 import jakarta.xml.bind.annotation.*;
 import java.math.BigInteger;
-import java.util.UUID;
 
-@Entity
+/**
+ * One article of a post. No longer its own row: {@link NzbFile} stores its segments as one JSON
+ * column, so this is a plain value read from and written to that JSON, not a persisted entity.
+ */
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "", propOrder = {"value"})
 public class Segment {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @XmlTransient
-    private UUID id;
     @XmlValue
     protected String value;
     @XmlAttribute(name = "bytes", required = true)

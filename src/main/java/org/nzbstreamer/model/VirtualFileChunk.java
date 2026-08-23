@@ -74,12 +74,12 @@ public class VirtualFileChunk {
 
     /** The segments of the post that hold the bytes of this chunk, in sequence. */
     public List<Segment> segments() {
-        return nzbFile.getSegments().getSegment().subList(firstSegment, lastSegment + 1);
+        return nzbFile.getSegments().subList(firstSegment, lastSegment + 1);
     }
 
     /** The newsgroup of the post. A download needs it with the address of the segment. */
     public String group() {
-        return nzbFile.getGroups().getGroup().getFirst();
+        return nzbFile.getGroups().getFirst();
     }
 
     public UUID getId() {

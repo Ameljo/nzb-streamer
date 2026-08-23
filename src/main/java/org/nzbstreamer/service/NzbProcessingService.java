@@ -50,16 +50,28 @@ public class NzbProcessingService {
      */
     public Nzb processNzbFile(InputStream inputStream, String filename)
             throws NzbParseException, IOException, InterruptedException, UsenetException {
+        long startedAt = System.nanoTime();
         log.info("Processing NZB file: {}", filename);
 
         Nzb nzb = NzbParserFactory.createParser().parse(inputStream);
         log.info("Successfully parsed NZB file: {} with {} files", filename, nzb.getFiles().size());
 
+        long sizesStart = System.nanoTime();
         resolveSizes(nzb);
-        List<VirtualFile> virtualFiles = transform(nzb);
-        store.save(virtualFiles, folderNameOf(filename));
+        log.info("Resolved sizes for {} files in {} ms", nzb.getFiles().size(),
+                (System.nanoTime() - sizesStart) / 1_000_000);
 
-        log.info("NZB file processing completed successfully: {}", filename);
+        long transformStart = System.nanoTime();
+        List<VirtualFile> virtualFiles = transform(nzb);
+        log.info("Transformed NZB into {} files in {} ms", virtualFiles.size(),
+                (System.nanoTime() - transformStart) / 1_000_000);
+
+        long saveStart = System.nanoTime();
+        store.save(virtualFiles, folderNameOf(filename));
+        log.info("Saved files in {} ms", (System.nanoTime() - saveStart) / 1_000_000);
+
+        log.info("NZB file processing completed successfully: {} in {} ms", filename,
+                (System.nanoTime() - startedAt) / 1_000_000);
         return nzb;
     }
 
@@ -70,12 +82,12 @@ public class NzbProcessingService {
      * the first article of each post and gives the sizes of the decoded segments, which a seek
      * needs.</p>
      *
-     * <p>A post of an nfo file gets none. It holds one small article, and a connection for it
-     * costs more than the size that it gives.</p>
+     * <p>A post of a repair or metadata file (PAR2, SFV, NFO, ...) gets none. It never becomes
+     * media, and a connection for it costs more than the size that it gives.</p>
      */
     private void resolveSizes(Nzb nzb) throws IOException, InterruptedException, UsenetException {
         sizeResolver.resolve(nzb.getFiles().stream()
-                .filter(file -> !NzbUtils.sanitizeFileName(file.getSubject()).contains(".nfo"))
+                .filter(file -> !NzbUtils.isRepairOrMetadataFile(file.getSubject()))
                 .toList());
     }
 

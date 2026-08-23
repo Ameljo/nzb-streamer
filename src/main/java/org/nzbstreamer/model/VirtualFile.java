@@ -47,7 +47,7 @@ public class VirtualFile {
 
     // JoinColumn and not a table of the relation: the order column then goes in the table of the
     // chunks.
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JoinColumn(name = "virtual_file_id")
     @OrderColumn(name = "chunk_order")
     private List<VirtualFileChunk> chunks = new ArrayList<>();
@@ -66,7 +66,7 @@ public class VirtualFile {
         this.filename = filename;
         this.size = size;
         this.chunks.add(new VirtualFileChunk(nzbFile, 0, 0, size, 0,
-                nzbFile.getSegments().getSegment().size() - 1));
+                nzbFile.getSegments().size() - 1));
     }
 
     /** Makes a file of the given parts of one post or of many posts. */

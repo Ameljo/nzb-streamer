@@ -26,6 +26,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Makes the files of an NZB.
@@ -49,6 +53,10 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
 
     private static final String UNKNOWN_TYPE = "application/octet-stream";
 
+    /** Same reasoning and same bound as {@code NzbFileSizeResolver.PARALLEL_POSTS}: several posts
+     *  at a time beats one, and beats opening them all at once. */
+    private static final int PARALLEL_POSTS = 12;
+
     private final Parser parser;
     private final VirtualFileStreamFactory streams;
     private final Tika tika = new Tika();
@@ -66,41 +74,33 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
     private record Volume(NzbFile nzbFile, String name, RarArchive archive) {
     }
 
+    /** What one post's header read produced: an archive volume, a kept media file, or neither. */
+    private record PostOutcome(Volume volume, VirtualFile file) {
+        static final PostOutcome NONE = new PostOutcome(null, null);
+    }
+
     @Override
     public List<VirtualFile> transform(Nzb nzb) {
+        List<NzbFile> candidates = nzb.getFiles().stream()
+                .filter(nzbFile -> {
+                    if (NzbUtils.isRepairOrMetadataFile(nzbFile.getSubject())) {
+                        log.info("{}: name says repair/metadata file, thus it stays out with no"
+                                        + " download", NzbUtils.sanitizeFileName(nzbFile.getSubject()));
+                        return false;
+                    }
+                    return true;
+                })
+                .toList();
+
+        List<PostOutcome> outcomes = readPosts(candidates);
+
         List<Volume> archives = new ArrayList<>();
         List<VirtualFile> files = new ArrayList<>();
-
-        for (NzbFile nzbFile : nzb.getFiles()) {
-            String name = NzbUtils.sanitizeFileName(nzbFile.getSubject());
-            RarArchiveCollector collector = new RarArchiveCollector();
-            ParseContext context = new ParseContext();
-            context.set(RarArchiveCollector.class, collector);
-
-            Metadata metadata = new Metadata();
-            // A hint for Tika. The content has more authority than this name.
-            metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, name);
-
-            VirtualFile postedFile = new VirtualFile(nzbFile.getSize(), name, nzbFile);
-            long startedAt = System.nanoTime();
-            try (InputStream stream = streams.openRange(postedFile)) {
-                // The stream of a virtual file can move its cursor. The parser must use this
-                // stream and not the stream of Tika, because TikaInputStream.skip reads the bytes.
-                context.set(RarSourceStream.class, new RarSourceStream(stream));
-                parser.parse(stream, new DefaultHandler(), metadata, context);
-            } catch (Exception e) {
-                log.error("Cannot read {}: {}", name, e.getMessage());
-                continue;
-            }
-
-            RarArchive archive = collector.archive();
-            if (archive != null) {
-                log.info("{}: {} archive, {} entries, headers found with {} bytes in {} ms", name,
-                        archive.format(), archive.entries().size(), archive.bytesRead(),
-                        (System.nanoTime() - startedAt) / 1_000_000);
-                archives.add(new Volume(nzbFile, name, archive));
-            } else {
-                singleFile(postedFile, name, metadata.get(Metadata.CONTENT_TYPE)).ifPresent(files::add);
+        for (PostOutcome outcome : outcomes) {
+            if (outcome.volume() != null) {
+                archives.add(outcome.volume());
+            } else if (outcome.file() != null) {
+                files.add(outcome.file());
             }
         }
 
@@ -109,12 +109,80 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
         return files;
     }
 
+    /**
+     * Reads the headers of several posts, a bounded number at a time.
+     *
+     * <p>Each post costs a network round trip, so one at a time is too slow for an NZB of many
+     * posts, and all of them at once risks a news server flagging the burst of new connections.
+     * This bounds how many run at the same time instead of either extreme.</p>
+     */
+    private List<PostOutcome> readPosts(List<NzbFile> candidates) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        ExecutorService executor = Executors.newFixedThreadPool(
+                Math.min(PARALLEL_POSTS, candidates.size()));
+        List<Future<PostOutcome>> tasks = candidates.stream()
+                .map(nzbFile -> executor.submit(() -> readPost(nzbFile)))
+                .toList();
+        try {
+            List<PostOutcome> outcomes = new ArrayList<>();
+            for (Future<PostOutcome> task : tasks) {
+                outcomes.add(task.get());
+            }
+            return outcomes;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            tasks.forEach(task -> task.cancel(true));
+            throw new RuntimeException("Interrupted while reading the posts", e);
+        } catch (ExecutionException e) {
+            tasks.forEach(task -> task.cancel(true));
+            throw new RuntimeException("Cannot read a post", e.getCause());
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    /** Reads one post's headers and says what it is: an archive volume, a kept media file, or
+     *  neither. */
+    private PostOutcome readPost(NzbFile nzbFile) {
+        String name = NzbUtils.sanitizeFileName(nzbFile.getSubject());
+        RarArchiveCollector collector = new RarArchiveCollector();
+        ParseContext context = new ParseContext();
+        context.set(RarArchiveCollector.class, collector);
+
+        Metadata metadata = new Metadata();
+        // A hint for Tika. The content has more authority than this name.
+        metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, name);
+
+        VirtualFile postedFile = new VirtualFile(nzbFile.getSize(), name, nzbFile);
+        long startedAt = System.nanoTime();
+        try (InputStream stream = streams.openRange(postedFile)) {
+            // The stream of a virtual file can move its cursor. The parser must use this
+            // stream and not the stream of Tika, because TikaInputStream.skip reads the bytes.
+            context.set(RarSourceStream.class, new RarSourceStream(stream));
+            parser.parse(stream, new DefaultHandler(), metadata, context);
+        } catch (Exception e) {
+            log.error("Cannot read {}: {}", name, e.getMessage());
+            return PostOutcome.NONE;
+        }
+        log.info("{}: header read in {} ms", name, (System.nanoTime() - startedAt) / 1_000_000);
+
+        RarArchive archive = collector.archive();
+        if (archive != null) {
+            return new PostOutcome(new Volume(nzbFile, name, archive), null);
+        }
+        return singleFile(postedFile, name, metadata.get(Metadata.CONTENT_TYPE))
+                .map(file -> new PostOutcome(null, file))
+                .orElse(PostOutcome.NONE);
+    }
+
     /** Gives the file of a post that is not an archive. All the bytes of the post are the file. */
     private java.util.Optional<VirtualFile> singleFile(VirtualFile postedFile, String name,
                                                        String contentType) {
         String type = contentType == null ? UNKNOWN_TYPE : contentType;
         if (!NzbUtils.isMediaType(type)) {
-            log.info("{}: type {} is not a media type, thus the file stays out", name, type);
+//            log.info("{}: type {} is not a media type, thus the file stays out", name, type);
             return java.util.Optional.empty();
         }
         postedFile.setContentType(type);
@@ -194,7 +262,7 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
      * sequence.
      */
     private VirtualFileChunk chunkOf(NzbFile nzbFile, RarFileEntry entry, long fileStart) {
-        List<Segment> segments = nzbFile.getSegments().getSegment();
+        List<Segment> segments = nzbFile.getSegments();
         long from = entry.dataOffset();
         long to = from + entry.packedSize();
 
