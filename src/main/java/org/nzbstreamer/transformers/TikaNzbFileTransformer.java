@@ -182,7 +182,7 @@ public class TikaNzbFileTransformer implements NzbTransformer<List<VirtualFile>>
                                                        String contentType) {
         String type = contentType == null ? UNKNOWN_TYPE : contentType;
         if (!NzbUtils.isMediaType(type)) {
-//            log.info("{}: type {} is not a media type, thus the file stays out", name, type);
+            log.info("{}: type {} is not a media type, thus the file stays out", name, type);
             return java.util.Optional.empty();
         }
         postedFile.setContentType(type);
