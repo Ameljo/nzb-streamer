@@ -1,6 +1,5 @@
 package org.nzbstreamer.decoder;
 
-import jakarta.transaction.NotSupportedException;
 import org.nzbstreamer.decoder.records.YencHeader;
 import org.nzbstreamer.decoder.records.YencPartInfo;
 import org.nzbstreamer.decoder.records.YencTrailer;
@@ -15,7 +14,7 @@ import java.util.zip.CRC32;
 public class SingePartDecoder extends AbstractYencDecoder implements YencDecoder {
     @Override
     public YencPartInfo parseYencPartInfo(Reader reader) throws Exception {
-        throw new NotSupportedException("Single-part decoder does not support part info parsing.");
+        throw new UnsupportedOperationException("Single-part decoder does not support part info parsing.");
     }
 
     @Override
