@@ -5,12 +5,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.apache.catalina.connector.ClientAbortException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.client.NzbStreamerClient;
+import org.nzbstreamer.entity.VirtualFileEntity;
+import org.nzbstreamer.entity.VirtualFileMapper;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.VirtualResource;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.repository.VirtualResourceRepository;
 import org.nzbstreamer.streams.VirtualFileStream;
-import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,7 +36,7 @@ public class VirtualFileController {
     private VirtualResourceRepository virtualResourceRepository;
 
     @Autowired
-    private VirtualFileStreamFactory streams;
+    private NzbStreamerClient client;
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listFiles() {
@@ -55,7 +57,7 @@ public class VirtualFileController {
     @Transactional
     public ResponseEntity<Map<String, Object>> deleteFile(@PathVariable UUID id) {
         Map<String, Object> response = new HashMap<>();
-        Optional<VirtualFile> opt = virtualFileRepository.findById(id);
+        Optional<VirtualFileEntity> opt = virtualFileRepository.findById(id);
         if (opt.isEmpty()) {
             response.put("success", false);
             response.put("message", "File not found");
@@ -73,12 +75,12 @@ public class VirtualFileController {
 
     @GetMapping("/stream/{id}")
     public void streamFile(@PathVariable UUID id, HttpServletRequest request, HttpServletResponse response) throws IOException {
-        Optional<VirtualFile> opt = virtualFileRepository.findById(id);
+        Optional<VirtualFileEntity> opt = virtualFileRepository.findById(id);
         if (opt.isEmpty()) {
             response.sendError(HttpServletResponse.SC_NOT_FOUND, "File not found");
             return;
         }
-        VirtualFile vf = opt.get();
+        VirtualFile vf = VirtualFileMapper.toLib(opt.get());
 
         String contentType = vf.getContentType();
         if (contentType == null || contentType.isBlank()) {
@@ -123,7 +125,7 @@ public class VirtualFileController {
 
         long bytesToWrite = end - start + 1;
         byte[] buffer = new byte[65536];
-        try (VirtualFileStream in = streams.openStream(vf, buffer.length);
+        try (VirtualFileStream in = client.openStream(vf, buffer.length);
              OutputStream out = response.getOutputStream()) {
             if (start > 0) in.skip(start);
             int read;

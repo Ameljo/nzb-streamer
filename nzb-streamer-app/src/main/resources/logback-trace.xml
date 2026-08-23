@@ -17,7 +17,6 @@
     </appender>
 
     <!-- The times of the connection, of the transfer and of the waits. -->
-    <logger name="org.nzbstreamer.service.UsenetDownloadService" level="DEBUG"/>
     <logger name="org.nzbstreamer.workers.DownloadSegmentsWorker" level="DEBUG"/>
     <logger name="org.nzbstreamer.streams.VirtualFileStream" level="DEBUG"/>
 

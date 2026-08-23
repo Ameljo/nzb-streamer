@@ -1,6 +1,7 @@
 package org.nzbstreamer.model;
 
 import jakarta.persistence.*;
+import org.nzbstreamer.entity.VirtualFileEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +29,7 @@ public class VirtualResource {
     private String name;
 
     @OneToOne(cascade = CascadeType.MERGE)
-    private VirtualFile file;
+    private VirtualFileEntity file;
 
     @ManyToOne(cascade = CascadeType.ALL)
     private VirtualResource parent;
@@ -60,11 +61,11 @@ public class VirtualResource {
         isFolder = folder;
     }
 
-    public VirtualFile getFile() {
+    public VirtualFileEntity getFile() {
         return file;
     }
 
-    public void setFile(VirtualFile file) {
+    public void setFile(VirtualFileEntity file) {
         this.file = file;
     }
 

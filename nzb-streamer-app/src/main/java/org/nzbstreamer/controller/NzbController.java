@@ -2,15 +2,12 @@ package org.nzbstreamer.controller;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.client.NzbStreamerClient;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.parser.NzbParserFactory;
-import org.nzbstreamer.service.NzbFileSizeResolver;
 import org.nzbstreamer.service.NzbProcessingService;
 import org.nzbstreamer.streams.VirtualFileStream;
-import org.nzbstreamer.streams.VirtualFileStreamFactory;
-import org.nzbstreamer.transformers.NzbTransformerFactory;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,13 +47,7 @@ public class NzbController {
     private NzbProcessingService nzbProcessingService;
 
     @Autowired
-    private NzbFileSizeResolver sizeResolver;
-
-    @Autowired
-    private NzbTransformerFactory nzbTransformerFactory;
-
-    @Autowired
-    private VirtualFileStreamFactory streams;
+    private NzbStreamerClient client;
 
     /**
      * Upload and process an NZB file via multipart form
@@ -291,13 +282,13 @@ public class NzbController {
     private ResponseEntity<Map<String, Object>> download(InputStream inputStream) {
         Map<String, Object> response = new HashMap<>();
         try {
-            Nzb nzb = NzbParserFactory.createParser().parse(inputStream);
+            Nzb nzb = client.parse(inputStream);
             // A post of an nfo file gets no size: it holds one small article, and a connection for
             // it costs more than the size that it gives. See NzbFileSizeResolver.
-            sizeResolver.resolve(nzb.getFiles().stream()
+            client.resolveSizes(nzb.getFiles().stream()
                     .filter(f -> !NzbUtils.sanitizeFileName(f.getSubject()).contains(".nfo"))
                     .toList());
-            List<VirtualFile> files = nzbTransformerFactory.getTransformer(nzb).transform(nzb);
+            List<VirtualFile> files = client.buildVirtualFiles(nzb);
 
             File downloadsDir = new File("downloads");
             if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
@@ -308,7 +299,7 @@ public class NzbController {
             for (VirtualFile vf : files) {
                 File target = new File(downloadsDir, vf.filename());
                 log.info("Downloading {} ({} bytes) to {}", vf.filename(), vf.getSize(), target);
-                try (VirtualFileStream in = streams.openStream(vf);
+                try (VirtualFileStream in = client.openStream(vf);
                      OutputStream out = new FileOutputStream(target)) {
                     in.transferTo(out);
                 }

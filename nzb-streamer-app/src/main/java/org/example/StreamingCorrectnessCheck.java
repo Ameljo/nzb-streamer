@@ -1,11 +1,12 @@
 package org.example;
 
+import org.nzbstreamer.client.NzbStreamerClient;
+import org.nzbstreamer.entity.VirtualFileMapper;
 import org.nzbstreamer.model.Segment;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.VirtualFileChunk;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.streams.VirtualFileStream;
-import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -53,10 +54,10 @@ public class StreamingCorrectnessCheck {
                 .run(args);
         try {
             VirtualFileRepository files = context.getBean(VirtualFileRepository.class);
-            VirtualFileStreamFactory streams = context.getBean(VirtualFileStreamFactory.class);
+            NzbStreamerClient client = context.getBean(NzbStreamerClient.class);
 
-            VirtualFile file = files.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("no file " + id));
+            VirtualFile file = VirtualFileMapper.toLib(files.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("no file " + id)));
             File reference = new File("downloads", file.filename());
             if (!reference.isFile()) {
                 throw new IllegalStateException("no local reference file at "
@@ -69,7 +70,7 @@ public class StreamingCorrectnessCheck {
             // Checks the raw segment order as loaded, with no network involved, before spending
             // any bandwidth on the seek checks below.
             for (int attempt = 1; attempt <= repeats; attempt++) {
-                VirtualFile orderFile = files.findById(id).orElseThrow();
+                VirtualFile orderFile = VirtualFileMapper.toLib(files.findById(id).orElseThrow());
                 printSegmentOrder(attempt, orderFile);
             }
             System.out.println();
@@ -82,8 +83,8 @@ public class StreamingCorrectnessCheck {
             for (int attempt = 1; attempt <= repeats; attempt++) {
                 System.out.printf("--- attempt %d/%d ---%n", attempt, repeats);
                 // A fresh load of the entity, the same way a new HTTP request loads it.
-                VirtualFile attemptFile = files.findById(id).orElseThrow();
-                try (VirtualFileStream stream = streams.openStream(attemptFile)) {
+                VirtualFile attemptFile = VirtualFileMapper.toLib(files.findById(id).orElseThrow());
+                try (VirtualFileStream stream = client.openStream(attemptFile)) {
                     for (long position : seeks) {
                         checkSeek(stream, reference, position);
                     }

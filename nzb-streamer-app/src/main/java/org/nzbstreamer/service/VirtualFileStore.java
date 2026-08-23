@@ -2,6 +2,8 @@ package org.nzbstreamer.service;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.entity.VirtualFileEntity;
+import org.nzbstreamer.entity.VirtualFileMapper;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.model.VirtualResource;
 import org.nzbstreamer.repository.VirtualFileRepository;
@@ -44,28 +46,30 @@ public class VirtualFileStore {
      */
     @Transactional
     public void save(List<VirtualFile> files, String folderName) {
+        List<VirtualFileEntity> entities = VirtualFileMapper.toEntities(files);
+
         // Save all files first so that IDs are assigned by the database.
-        fileRepository.saveAll(files);
+        fileRepository.saveAll(entities);
 
         // Associate the first image file (if any) as the thumbnail for all video/audio files.
-        files.stream()
+        entities.stream()
                 .filter(f -> f.getContentType() != null && f.getContentType().startsWith("image/"))
                 .findFirst()
                 .ifPresent(thumbnail -> {
-                    files.stream()
+                    entities.stream()
                             .filter(f -> f.getContentType() != null
                                     && !f.getContentType().startsWith("image/"))
                             .forEach(f -> f.setThumbnailId(thumbnail.getId()));
-                    fileRepository.saveAll(files);
+                    fileRepository.saveAll(entities);
                 });
 
-        log.info("Saved {} virtual files to repository", files.size());
+        log.info("Saved {} virtual files to repository", entities.size());
 
         VirtualResource folder = folderOf(folderName);
         int added = 0;
         int alreadyThere = 0;
-        for (VirtualFile file : files) {
-            String path = folder.getPath() + "/" + file.filename();
+        for (VirtualFileEntity entity : entities) {
+            String path = folder.getPath() + "/" + entity.getFilename();
             // The tree holds one resource for a path. A caller that adds the same NZB a second
             // time, or another NZB that holds a file of the same name in the same folder, keeps
             // the resource of before: the path names the file of the tree, not the upload.
@@ -75,13 +79,13 @@ public class VirtualFileStore {
                 continue;
             }
             VirtualResource resource = new VirtualResource();
-            resource.setName(file.filename());
+            resource.setName(entity.getFilename());
             resource.setFolder(false);
-            resource.setFile(file);
+            resource.setFile(entity);
             resource.setPath(path);
             resource.setParent(folder);
             resourceRepository.save(resource);
-            log.debug("Created virtual resource for: {}", file.filename());
+            log.debug("Created virtual resource for: {}", entity.getFilename());
             added++;
         }
         log.info("{}: {} files added, {} in the tree already", folder.getPath(), added,

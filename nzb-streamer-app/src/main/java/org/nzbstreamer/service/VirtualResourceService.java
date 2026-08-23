@@ -3,14 +3,15 @@ package org.nzbstreamer.service;
 import io.milton.resource.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.client.NzbStreamerClient;
+import org.nzbstreamer.entity.VirtualFileEntity;
+import org.nzbstreamer.entity.VirtualFileMapper;
 import org.nzbstreamer.model.VirtualResource;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.nzbstreamer.repository.VirtualResourceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.webdav.VirtualFileResource;
 import org.nzbstreamer.webdav.VirtualFolderResource;
 
@@ -22,15 +23,15 @@ public class VirtualResourceService {
     private static final Logger log = LogManager.getLogger(VirtualResourceService.class);
     private final VirtualResourceRepository resourceRepository;
     private final VirtualFileRepository fileRepository;
-    private final VirtualFileStreamFactory streams;
+    private final NzbStreamerClient client;
 
     @Autowired
     public VirtualResourceService(VirtualResourceRepository resourceRepository,
                                   VirtualFileRepository fileRepository,
-                                  VirtualFileStreamFactory streams) {
+                                  NzbStreamerClient client) {
         this.resourceRepository = resourceRepository;
         this.fileRepository = fileRepository;
-        this.streams = streams;
+        this.client = client;
     }
 
     @Transactional
@@ -46,16 +47,17 @@ public class VirtualResourceService {
                         Resource resource = new VirtualFolderResource(folder, rChild.getName(), r.getPath());
                         children.add(resource);
                     } else {
-                        VirtualFile vf = rChild.getFile();
-                        children.add(new VirtualFileResource(vf, folder, streams));
+                        VirtualFileEntity vfEntity = rChild.getFile();
+                        children.add(new VirtualFileResource(VirtualFileMapper.toLib(vfEntity),
+                                folder, client));
                     }
                 }
                 folder.setChildren(children);
                 return folder;
             } else {
                 log.debug("returning file resource for path: " + url);
-                VirtualFile vf = r.getFile();
-                return new VirtualFileResource(vf, null, streams);
+                VirtualFileEntity vfEntity = r.getFile();
+                return new VirtualFileResource(VirtualFileMapper.toLib(vfEntity), null, client);
             }
         }
         log.debug("_found: " + r + " for url: " + url + " (adjusted: " + url + ") and path: " + url);

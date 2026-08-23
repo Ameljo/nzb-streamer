@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.nzbstreamer.webdav.VirtualResourceFactory;
 
 @SpringBootApplication(scanBasePackages = "org.nzbstreamer")
-@EntityScan(basePackages = {"org.nzbstreamer.model"})
+@EntityScan(basePackages = {"org.nzbstreamer.model", "org.nzbstreamer.entity"})
 @EnableConfigurationProperties
 public class Main {
     private static final Logger logger = LogManager.getLogger(Main.class.getName());

@@ -1,6 +1,6 @@
 package org.nzbstreamer.controller;
 
-import org.nzbstreamer.model.VirtualFile;
+import org.nzbstreamer.entity.VirtualFileEntity;
 import org.nzbstreamer.repository.VirtualFileRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -18,7 +18,7 @@ public class UiController {
 
     @GetMapping("/")
     public String index(Model model) {
-        List<VirtualFile> files = new ArrayList<>();
+        List<VirtualFileEntity> files = new ArrayList<>();
         virtualFileRepository.findAll().forEach(files::add);
         model.addAttribute("files", files);
         return "index";

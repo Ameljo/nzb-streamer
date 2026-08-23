@@ -2,12 +2,11 @@ package org.nzbstreamer.service;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.client.NzbStreamerClient;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.parser.NzbParserFactory;
-import org.nzbstreamer.transformers.NzbTransformerFactory;
 import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,10 +28,7 @@ public class NzbProcessingService {
     private static final Logger log = LogManager.getLogger(NzbProcessingService.class);
 
     @Autowired
-    private NzbTransformerFactory nzbTransformerFactory;
-
-    @Autowired
-    private NzbFileSizeResolver sizeResolver;
+    private NzbStreamerClient client;
 
     @Autowired
     private VirtualFileStore store;
@@ -53,7 +49,7 @@ public class NzbProcessingService {
         long startedAt = System.nanoTime();
         log.info("Processing NZB file: {}", filename);
 
-        Nzb nzb = NzbParserFactory.createParser().parse(inputStream);
+        Nzb nzb = client.parse(inputStream);
         log.info("Successfully parsed NZB file: {} with {} files", filename, nzb.getFiles().size());
 
         long sizesStart = System.nanoTime();
@@ -86,7 +82,7 @@ public class NzbProcessingService {
      * media, and a connection for it costs more than the size that it gives.</p>
      */
     private void resolveSizes(Nzb nzb) throws IOException, InterruptedException, UsenetException {
-        sizeResolver.resolve(nzb.getFiles().stream()
+        client.resolveSizes(nzb.getFiles().stream()
                 .filter(file -> !NzbUtils.isRepairOrMetadataFile(file.getSubject()))
                 .toList());
     }
@@ -98,7 +94,7 @@ public class NzbProcessingService {
      * volume to the next volume.</p>
      */
     private List<VirtualFile> transform(Nzb nzb) {
-        List<VirtualFile> found = nzbTransformerFactory.getTransformer(nzb).transform(nzb);
+        List<VirtualFile> found = client.buildVirtualFiles(nzb);
         return found == null ? List.of() : found;
     }
 

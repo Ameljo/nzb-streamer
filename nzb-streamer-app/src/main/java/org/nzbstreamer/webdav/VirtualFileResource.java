@@ -6,9 +6,9 @@ import io.milton.http.*;
 import io.milton.resource.GetableResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.client.NzbStreamerClient;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.streams.VirtualFileStream;
-import org.nzbstreamer.streams.VirtualFileStreamFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,7 +21,7 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
     private static final Logger log = LogManager.getLogger(VirtualFileResource.class);
 
     private final VirtualFile vf;
-    private final VirtualFileStreamFactory streams;
+    private final NzbStreamerClient client;
 
     private String resourcetype = null;
     private String displayname;
@@ -39,10 +39,10 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
      * stream, thus only a request for the bytes reaches the news server.</p>
      */
     public VirtualFileResource(VirtualFile vf, VirtualFolderResource parent,
-                               VirtualFileStreamFactory streams) {
+                               NzbStreamerClient client) {
         super(parent, vf.filename());
         this.vf = vf;
-        this.streams = streams;
+        this.client = client;
         this.displayname = vf.filename();
         this.getetag = this.id.toString();
         this.getcontentlength = vf.getSize();
@@ -159,7 +159,7 @@ public class VirtualFileResource extends AbstractResource implements GetableReso
         log.debug("Stream requested for range {} to {}", start, end);
 
         long bytesToWrite = end - start + 1;
-        try (VirtualFileStream nzbStream = streams.open(vf)) {
+        try (VirtualFileStream nzbStream = client.open(vf)) {
             if (start > 0) nzbStream.skip(start);
             int bufferLength = 65536;
             int read;
