@@ -11,6 +11,7 @@ public final class UsenetServerConfig {
 
     private final String host;
     private final int port;
+    private final boolean tls;
     private final String username;
     private final String password;
     private final int poolSize;
@@ -22,6 +23,7 @@ public final class UsenetServerConfig {
     private UsenetServerConfig(Builder builder) {
         this.host = builder.host;
         this.port = builder.port;
+        this.tls = builder.tls;
         this.username = builder.username;
         this.password = builder.password;
         this.poolSize = builder.poolSize;
@@ -37,6 +39,8 @@ public final class UsenetServerConfig {
 
     public String host() { return host; }
     public int port() { return port; }
+    /** Whether the connection uses implicit TLS (the socket is encrypted from the first byte). */
+    public boolean tls() { return tls; }
     public String username() { return username; }
     public String password() { return password; }
     public int poolSize() { return poolSize; }
@@ -48,6 +52,7 @@ public final class UsenetServerConfig {
     public static final class Builder {
         private String host;
         private int port = 119;
+        private boolean tls = false;
         private String username;
         private String password;
         private int poolSize = 40;
@@ -66,6 +71,19 @@ public final class UsenetServerConfig {
 
         public Builder port(int port) {
             this.port = port;
+            return this;
+        }
+
+        /**
+         * Turns on implicit TLS: the socket is encrypted from the very first byte, the mode
+         * providers expect on their TLS port (commonly 563). Without this, the connection --
+         * including the login and everything downloaded -- travels in plain text. Off by default,
+         * since a plain {@code port(119)} connection is not a TLS connection and turning this on
+         * without also pointing {@link #port(int)} at the provider's TLS port will fail the
+         * handshake.
+         */
+        public Builder tls(boolean tls) {
+            this.tls = tls;
             return this;
         }
 

@@ -6,6 +6,7 @@ import org.nzbstreamer.exceptions.UsenetAuthenticationException;
 import org.nzbstreamer.exceptions.UsenetConnectionException;
 import org.nzbstreamer.exceptions.UsenetException;
 
+import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
@@ -19,6 +20,12 @@ public class NNTPClientFactory {
 
     public NNTPClient createClient() throws UsenetException {
         NNTPClient client = new NNTPClient();
+        // commons-net has no NNTPSClient (unlike its FTPSClient for FTP); swapping in an SSL
+        // socket factory before connect() is the standard way to get implicit TLS -- the socket
+        // is encrypted from the first byte, the mode providers expect on their TLS port.
+        if (config.tls()) {
+            client.setSocketFactory(SSLSocketFactory.getDefault());
+        }
         client.setCharset(StandardCharsets.ISO_8859_1);
         client.setConnectTimeout(config.connectTimeoutMs());
         client.setDefaultTimeout(config.readTimeoutMs());

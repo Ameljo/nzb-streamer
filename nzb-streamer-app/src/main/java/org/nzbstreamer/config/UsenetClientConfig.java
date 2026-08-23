@@ -19,6 +19,7 @@ public class UsenetClientConfig {
     public NzbStreamerClient nzbStreamerClient(
             @Value("${usenet.server}") String server,
             @Value("${usenet.port}") int port,
+            @Value("${usenet.use-tls:false}") boolean useTls,
             @Value("${usenet.username}") String username,
             @Value("${usenet.password}") String password,
             @Value("${usenet.pool-size:40}") int poolSize,
@@ -29,6 +30,7 @@ public class UsenetClientConfig {
         UsenetServerConfig config = UsenetServerConfig.builder()
                 .host(server)
                 .port(port)
+                .tls(useTls)
                 .username(username)
                 .password(password)
                 .poolSize(poolSize)
