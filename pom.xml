@@ -31,7 +31,6 @@
         <jaxb-runtime.version>3.0.2</jaxb-runtime.version>
         <commons-net.version>3.12.0</commons-net.version>
         <tika.version>3.2.3</tika.version>
-        <log4j.version>2.23.1</log4j.version>
     </properties>
 
     <dependencyManagement>
@@ -60,16 +59,6 @@
                 <groupId>org.apache.tika</groupId>
                 <artifactId>tika-core</artifactId>
                 <version>${tika.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.logging.log4j</groupId>
-                <artifactId>log4j-api</artifactId>
-                <version>${log4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.logging.log4j</groupId>
-                <artifactId>log4j-core</artifactId>
-                <version>${log4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
