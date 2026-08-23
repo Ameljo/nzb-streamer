@@ -28,9 +28,9 @@ public class UsenetDownloadService {
 
     public DownloadResult downloadFile(NzbFile file, OutputStream outputStream) throws IOException {
         var fileName = NzbUtils.sanitizeFileName(file.getSubject());
-        var group = file.getGroups().getGroup().getFirst();
+        var group = file.getGroups().getFirst();
 
-        var segments = file.getSegments().getSegment();
+        var segments = file.getSegments();
         System.out.println("Downloading (async): " + fileName);
 
         final Semaphore semaphore = new Semaphore(10);

@@ -14,6 +14,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Gives the segments of a post their size and their position in the file.
@@ -32,6 +36,14 @@ public class NzbFileSizeResolver {
 
     private static final Logger log = LogManager.getLogger(NzbFileSizeResolver.class);
 
+    /**
+     * A post at a time was too slow for an NZB of many posts (each one costs a network round
+     * trip), and all of them at once risks the server flagging the burst of new connections. This
+     * is the compromise: several posts at a time, capped well under the size of the connection
+     * pool.
+     */
+    private static final int PARALLEL_POSTS = 12;
+
     private final UsenetConnectionPool pool;
 
     public NzbFileSizeResolver(UsenetConnectionPool pool) {
@@ -39,28 +51,54 @@ public class NzbFileSizeResolver {
     }
 
     /**
-     * Gives the sizes of several posts, one after the other.
+     * Gives the sizes of several posts, a bounded number at a time.
      *
      * <p>Each post costs one connection: the operation reads the first lines of an article and
-     * stops there, thus the connection cannot take another command and the pool closes it. Threads
-     * that read the posts at the same time open those connections at the same rate, and a news
-     * server refuses a caller that opens too many of them in a short time. One post at a time
-     * keeps that rate low, and the sizes of an NZB are a step of the upload and not of a
-     * stream.</p>
+     * stops there, thus the connection cannot take another command and the pool closes it. A
+     * caller that opens too many of those in a short burst risks a news server refusing it, so
+     * this bounds how many run at the same time instead of opening them all at once.</p>
      */
     public void resolve(List<NzbFile> files)
             throws IOException, InterruptedException, UsenetException {
-        for (NzbFile file : files) {
-            resolve(file);
+        if (files.isEmpty()) {
+            return;
+        }
+        ExecutorService executor = Executors.newFixedThreadPool(
+                Math.min(PARALLEL_POSTS, files.size()));
+        List<Future<?>> tasks = files.stream()
+                .<Future<?>>map(file -> executor.submit(() -> {
+                    resolve(file);
+                    return null;
+                }))
+                .toList();
+        try {
+            for (Future<?> task : tasks) {
+                task.get();
+            }
+        } catch (ExecutionException e) {
+            tasks.forEach(task -> task.cancel(true));
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException io) {
+                throw io;
+            }
+            if (cause instanceof UsenetException ue) {
+                throw ue;
+            }
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new IOException("Cannot resolve sizes", cause);
+        } finally {
+            executor.shutdown();
         }
     }
 
     /** Gives each segment of one post its size and its position. */
     public void resolve(NzbFile file) throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();
-        List<Segment> segments = file.getSegments().getSegment();
+        List<Segment> segments = file.getSegments();
         String messageId = NzbUtils.normalizeMessageId(segments.getFirst().getValue());
-        String group = file.getGroups().getGroup().getFirst();
+        String group = file.getGroups().getFirst();
 
         PooledClient pooled = pool.borrow(group);
         YencStart start;

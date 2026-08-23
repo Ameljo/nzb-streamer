@@ -60,11 +60,11 @@ public class JaxbNzbParser implements NzbParser{
     }
 
     private void setSizesFromAttributes(NzbFile file) {
-        if (file.getSegments() == null || file.getSegments().getSegment() == null) {
+        if (file.getSegments() == null) {
             return;
         }
         long position = 0;
-        for (Segment segment : file.getSegments().getSegment()) {
+        for (Segment segment : file.getSegments()) {
             long bytes = segment.getBytes() == null ? 0 : segment.getBytes().longValue();
             segment.setSize(bytes);
             segment.setStartPosition(position);

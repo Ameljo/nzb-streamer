@@ -132,7 +132,7 @@ public final class RarHeaderScan {
             return;
         }
 
-        log.info("{}: {} segments", name, nzbFile.getSegments().getSegment().size());
+        log.info("{}: {} segments", name, nzbFile.getSegments().size());
         report(name, nzbFile.getSize(), archive, millisecondsSince(startedAt));
     }
 

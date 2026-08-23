@@ -60,6 +60,10 @@ public class PrefetchingSource extends AbstractSegmentSource {
         this.fetcher = fetcher;
         this.maxRetries = maxRetries;
         this.parallelDownloads = parallelDownloads;
+        // Touches the (lazy) chunks here, on the caller's thread, so they are already loaded
+        // before the download worker's thread reads them: that thread has no Hibernate session
+        // of its own.
+        file.getChunks();
     }
 
     @Override

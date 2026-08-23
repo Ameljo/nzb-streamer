@@ -47,9 +47,7 @@ public final class VirtualFileTestData {
         NzbFile nzbFile = new NzbFile();
         nzbFile.setSubject("\"volume" + number + ".rar\" yEnc (1/1)");
 
-        Groups groups = new Groups();
-        groups.getGroup().add("alt.binaries.test");
-        nzbFile.setGroups(groups);
+        nzbFile.setGroups(new ArrayList<>(List.of("alt.binaries.test")));
 
         List<Segment> list = new ArrayList<>();
         for (int i = 0; i < SEGMENTS_PER_VOLUME; i++) {
@@ -61,9 +59,7 @@ public final class VirtualFileTestData {
             segment.setStartPosition((long) i * SEGMENT_SIZE);
             list.add(segment);
         }
-        Segments segments = new Segments();
-        segments.setSegment(list);
-        nzbFile.setSegments(segments);
+        nzbFile.setSegments(list);
         nzbFile.setSize((long) SEGMENTS_PER_VOLUME * SEGMENT_SIZE);
         return nzbFile;
     }
