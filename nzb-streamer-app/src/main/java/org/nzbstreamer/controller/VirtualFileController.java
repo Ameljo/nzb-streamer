@@ -125,7 +125,7 @@ public class VirtualFileController {
 
         long bytesToWrite = end - start + 1;
         byte[] buffer = new byte[65536];
-        try (VirtualFileStream in = client.openStream(vf, buffer.length);
+        try (VirtualFileStream in = client.open(vf);
              OutputStream out = response.getOutputStream()) {
             if (start > 0) in.skip(start);
             int read;

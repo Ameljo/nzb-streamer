@@ -1,5 +1,7 @@
 package org.nzbstreamer.service;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.commons.net.nntp.NNTPClient;
 import org.nzbstreamer.client.UsenetServerConfig;
 import org.nzbstreamer.exceptions.UsenetAuthenticationException;
@@ -11,6 +13,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 public class NNTPClientFactory {
+
+    private static final Logger log = LogManager.getLogger(NNTPClientFactory.class);
 
     private final UsenetServerConfig config;
 
@@ -35,11 +39,16 @@ public class NNTPClientFactory {
         String username = config.username();
         String password = config.password();
 
+        log.debug("connecting to {}:{} ({})", server, port, config.tls() ? "TLS" : "plain text");
         try {
             client.connect(server, port);
         } catch (IOException e) {
             throw new UsenetConnectionException(server, port, e);
         }
+        // A plain-text server cannot complete a TLS handshake, so reaching this line with tls()
+        // true means the connection above -- welcome banner included -- was actually encrypted;
+        // there is no silent fallback to plain text in this code path.
+        log.debug("connected to {}:{} ({})", server, port, config.tls() ? "TLS" : "plain text");
         boolean authenticated = false;
         try {
             authenticated = client.authenticate(username, password);
