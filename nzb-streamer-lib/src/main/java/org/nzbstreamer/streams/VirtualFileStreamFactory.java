@@ -2,16 +2,14 @@ package org.nzbstreamer.streams;
 
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.service.SegmentFetcher;
-import org.springframework.stereotype.Component;
 
 /**
  * Makes the streams that read a {@link VirtualFile}.
  *
- * <p>A {@link VirtualFile} is a row of the database: it holds the chunks and the sizes, and it
- * knows nothing of the news server. This class holds the {@link SegmentFetcher} and gives a
- * stream for a file, thus the entity gives no stream of its own.</p>
+ * <p>A {@link VirtualFile} is a plain value: it holds the chunks and the sizes, and it knows
+ * nothing of the news server. This class holds the {@link SegmentFetcher} and gives a stream for
+ * a file, thus the file gives no stream of its own.</p>
  */
-@Component
 public class VirtualFileStreamFactory {
 
     private final SegmentFetcher fetcher;
