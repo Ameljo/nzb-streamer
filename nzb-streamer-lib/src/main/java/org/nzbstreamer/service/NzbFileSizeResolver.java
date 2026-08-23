@@ -8,7 +8,6 @@ import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.Segment;
 import org.nzbstreamer.utils.NzbUtils;
-import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -31,7 +30,6 @@ import java.util.concurrent.Future;
  * of {@link UsenetConnectionPool} and closes it: the answer of the server did not arrive at its
  * end, and the connection cannot take another command.</p>
  */
-@Component
 public class NzbFileSizeResolver {
 
     private static final Logger log = LogManager.getLogger(NzbFileSizeResolver.class);

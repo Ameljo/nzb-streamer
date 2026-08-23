@@ -1,12 +1,15 @@
 package org.nzbstreamer.service;
 
+import org.apache.commons.pool2.impl.AbandonedConfig;
 import org.apache.commons.pool2.impl.GenericObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nzbstreamer.client.UsenetServerConfig;
 import org.nzbstreamer.exceptions.PoolExhaustedException;
 import org.nzbstreamer.exceptions.UsenetException;
-import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.NoSuchElementException;
 
 /**
@@ -18,10 +21,9 @@ import java.util.NoSuchElementException;
  *
  * <p>The pool itself is a {@link GenericObjectPool} of Apache Commons Pool. This class holds it
  * and gives the exceptions of this application: a caller sees {@link UsenetException} and not the
- * {@code Exception} of the library. {@link UsenetPoolConfig} makes the pool.</p>
+ * {@code Exception} of the library. {@link #create(UsenetServerConfig)} makes the pool.</p>
  */
-@Component
-public class UsenetConnectionPool {
+public class UsenetConnectionPool implements AutoCloseable {
 
     private static final Logger log = LogManager.getLogger(UsenetConnectionPool.class);
 
@@ -31,6 +33,60 @@ public class UsenetConnectionPool {
 
     public UsenetConnectionPool(GenericObjectPool<PooledClient> pool) {
         this.pool = pool;
+    }
+
+    /**
+     * Makes a pool of connections for one news server.
+     *
+     * <p>The property {@code poolSize} gives the number of connections. The provider of the news
+     * server gives a maximum, usually between 8 and 50.</p>
+     *
+     * <p>The pool opens no connection at the start: it opens one when a caller asks and the pool
+     * has none free, and it stops at {@code poolSize}. Thus a run that reads one file uses the
+     * few connections that it needs.</p>
+     */
+    public static UsenetConnectionPool create(UsenetServerConfig config) {
+        NNTPClientFactory clientFactory = new NNTPClientFactory(config);
+        int size = config.poolSize();
+
+        GenericObjectPoolConfig<PooledClient> poolConfig = new GenericObjectPoolConfig<>();
+        poolConfig.setMaxTotal(size);
+        // A connection that is free stays in the pool. Only the evictor closes it.
+        poolConfig.setMaxIdle(size);
+        // No connection at the start. The pool opens them when the callers ask.
+        poolConfig.setMinIdle(0);
+        poolConfig.setBlockWhenExhausted(true);
+        poolConfig.setMaxWait(Duration.ofSeconds(config.poolWaitSeconds()));
+        // The last connection that came back goes out first, thus the connections stay warm.
+        poolConfig.setLifo(true);
+
+        // The evictor asks the connections that wait whether they answer, and it closes the ones
+        // that the server closed. Thus a caller does not wait for that question.
+        poolConfig.setTestOnBorrow(false);
+        poolConfig.setTestWhileIdle(true);
+        poolConfig.setTimeBetweenEvictionRuns(Duration.ofMinutes(1));
+        poolConfig.setMinEvictableIdleDuration(Duration.ofMinutes(config.poolIdleMinutes()));
+        poolConfig.setNumTestsPerEvictionRun(size);
+
+        GenericObjectPool<PooledClient> pool =
+                new GenericObjectPool<>(new PooledClientFactory(clientFactory), poolConfig);
+
+        // A caller that takes a connection and gives back none holds it for ever. This closes a
+        // connection that a caller holds for a long time, thus one error does not empty the pool.
+        AbandonedConfig abandoned = new AbandonedConfig();
+        abandoned.setRemoveAbandonedOnMaintenance(true);
+        abandoned.setRemoveAbandonedTimeout(Duration.ofMinutes(10));
+        abandoned.setLogAbandoned(true);
+        pool.setAbandonedConfig(abandoned);
+
+        log.info("connection pool of {} connections", size);
+        return new UsenetConnectionPool(pool);
+    }
+
+    /** Closes every connection of the pool. A caller that owns the pool closes it once, at the end. */
+    @Override
+    public void close() {
+        pool.close();
     }
 
     /**

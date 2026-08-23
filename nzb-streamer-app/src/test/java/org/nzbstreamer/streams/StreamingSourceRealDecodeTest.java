@@ -48,11 +48,7 @@ class StreamingSourceRealDecodeTest {
     }
 
     /** Builds a real yEnc article from the fake segment bytes and decodes it for real. */
-    private static final class RealDecodeSegments extends SegmentFetcher {
-
-        RealDecodeSegments() {
-            super(null);
-        }
+    private static final class RealDecodeSegments implements SegmentFetcher {
 
         @Override
         public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer,

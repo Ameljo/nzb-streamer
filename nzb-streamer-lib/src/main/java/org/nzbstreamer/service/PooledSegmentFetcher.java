@@ -6,26 +6,24 @@ import org.nzbstreamer.decoder.MultiPartDecoder;
 import org.nzbstreamer.exceptions.ArticleUnavaliableException;
 import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.utils.NzbUtils;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.util.concurrent.BlockingQueue;
 
 /**
- * Downloads one segment and gives its bytes after the decode operation.
+ * Downloads one segment over NNTP and gives its bytes after the decode operation.
  *
  * <p>The fetcher uses a connection of {@link UsenetConnectionPool}. Thus it does not make a new
  * connection for each segment.</p>
  */
-@Component
-public class SegmentFetcher {
+public class PooledSegmentFetcher implements SegmentFetcher {
 
-    private static final Logger log = LogManager.getLogger(SegmentFetcher.class);
+    private static final Logger log = LogManager.getLogger(PooledSegmentFetcher.class);
 
     private final UsenetConnectionPool pool;
 
-    public SegmentFetcher(UsenetConnectionPool pool) {
+    public PooledSegmentFetcher(UsenetConnectionPool pool) {
         this.pool = pool;
     }
 
@@ -38,6 +36,7 @@ public class SegmentFetcher {
      * @throws org.nzbstreamer.exceptions.ArticleUnavaliableException if the segment is not on the
      *         server
      */
+    @Override
     public byte[] fetch(String messageId, String group)
             throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();
@@ -65,6 +64,7 @@ public class SegmentFetcher {
         return bytes;
     }
 
+    @Override
     public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer, int bufferSize, int skip, int trim) throws IOException, UsenetException, InterruptedException {
         long startedAt = System.nanoTime();
         PooledClient pooled = pool.borrow(group);
@@ -101,6 +101,7 @@ public class SegmentFetcher {
      * another one. That costs one connection, and it saves the megabytes of the article that
      * nobody reads.</p>
      */
+    @Override
     public byte[] fetchPrefix(String messageId, String group, int maxBytes)
             throws IOException, InterruptedException, UsenetException {
         long startedAt = System.nanoTime();

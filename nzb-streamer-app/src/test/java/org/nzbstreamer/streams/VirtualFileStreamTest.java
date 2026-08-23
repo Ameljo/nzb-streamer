@@ -27,13 +27,9 @@ import static org.nzbstreamer.model.VirtualFileTestData.fileOfTwoVolumes;
 class VirtualFileStreamTest {
 
     /** A fetcher that gives the segments of the test and counts the downloads. */
-    private static final class TestSegments extends SegmentFetcher {
+    private static final class TestSegments implements SegmentFetcher {
 
         private final Set<String> downloaded = Collections.synchronizedSet(new HashSet<>());
-
-        TestSegments() {
-            super(null);
-        }
 
         @Override
         public byte[] fetch(String messageId, String group) {
@@ -109,11 +105,7 @@ class VirtualFileStreamTest {
     }
 
     /** A fetcher for the streaming decode path: gives the segment bytes straight to the queue. */
-    private static final class TestChunkedSegments extends SegmentFetcher {
-
-        TestChunkedSegments() {
-            super(null);
-        }
+    private static final class TestChunkedSegments implements SegmentFetcher {
 
         /** Forces multiple small windows per segment, regardless of the real bufferSize argument. */
         private static final int TEST_CHUNK_SIZE = 3;

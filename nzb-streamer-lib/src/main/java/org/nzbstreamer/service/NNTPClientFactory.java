@@ -1,41 +1,32 @@
 package org.nzbstreamer.service;
 
 import org.apache.commons.net.nntp.NNTPClient;
+import org.nzbstreamer.client.UsenetServerConfig;
 import org.nzbstreamer.exceptions.UsenetAuthenticationException;
 import org.nzbstreamer.exceptions.UsenetConnectionException;
 import org.nzbstreamer.exceptions.UsenetException;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@Component
 public class NNTPClientFactory {
 
-    @Value("${usenet.server}")
-    private String server;
+    private final UsenetServerConfig config;
 
-    @Value("${usenet.port}")
-    private int port;
-
-    @Value("${usenet.username}")
-    private String username;
-
-    @Value("${usenet.password}")
-    private String password;
-
-    @Value("${nntp.connection-timeout:10000}")
-    private int connectionTimeout;
-
-    @Value("${nntp.read-timeout:10000}")
-    private int readTimeout;
+    public NNTPClientFactory(UsenetServerConfig config) {
+        this.config = config;
+    }
 
     public NNTPClient createClient() throws UsenetException {
         NNTPClient client = new NNTPClient();
         client.setCharset(StandardCharsets.ISO_8859_1);
-        client.setConnectTimeout(connectionTimeout);
-        client.setDefaultTimeout(readTimeout);
+        client.setConnectTimeout(config.connectTimeoutMs());
+        client.setDefaultTimeout(config.readTimeoutMs());
+
+        String server = config.host();
+        int port = config.port();
+        String username = config.username();
+        String password = config.password();
 
         try {
             client.connect(server, port);
