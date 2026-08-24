@@ -1,27 +1,19 @@
 package org.nzbstreamer.model;
 
-import jakarta.xml.bind.annotation.*;
 import java.math.BigInteger;
 
 /**
  * One article of a post. No longer its own row: {@link NzbFile} stores its segments as one JSON
  * column, so this is a plain value read from and written to that JSON, not a persisted entity.
  */
-@XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(name = "", propOrder = {"value"})
 public class Segment {
 
-    @XmlValue
     protected String value;
-    @XmlAttribute(name = "bytes", required = true)
     protected BigInteger bytes;
-    @XmlAttribute(name = "number", required = true)
     protected BigInteger number;
 
-    @XmlTransient
     private long size;
 
-    @XmlTransient
     private long startPosition; // Position of the segment in the decoded file
 
     public Segment() {

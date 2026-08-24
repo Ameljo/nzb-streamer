@@ -27,8 +27,6 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <jakarta-xml-bind.version>4.0.2</jakarta-xml-bind.version>
-        <jaxb-runtime.version>3.0.2</jaxb-runtime.version>
         <commons-net.version>3.12.0</commons-net.version>
         <tika.version>3.2.3</tika.version>
     </properties>
@@ -39,16 +37,6 @@
                 <groupId>org.nzbstreamer</groupId>
                 <artifactId>nzb-streamer-lib</artifactId>
                 <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>jakarta.xml.bind</groupId>
-                <artifactId>jakarta.xml.bind-api</artifactId>
-                <version>${jakarta-xml-bind.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.glassfish.jaxb</groupId>
-                <artifactId>jaxb-runtime</artifactId>
-                <version>${jaxb-runtime.version}</version>
             </dependency>
             <dependency>
                 <groupId>commons-net</groupId>

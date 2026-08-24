@@ -1,11 +1,10 @@
 package org.nzbstreamer.client;
 
 import org.nzbstreamer.exceptions.NzbParseException;
-import org.nzbstreamer.exceptions.UsenetException;
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.parser.JaxbNzbParser;
+import org.nzbstreamer.parser.SaxNzbParser;
 import org.nzbstreamer.service.NzbFileSizeResolver;
 import org.nzbstreamer.service.PooledSegmentFetcher;
 import org.nzbstreamer.service.SegmentFetcher;
@@ -13,8 +12,8 @@ import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.streams.VirtualFileStream;
 import org.nzbstreamer.streams.VirtualFileStreamFactory;
 import org.nzbstreamer.transformers.TikaNzbFileTransformer;
+import org.nzbstreamer.utils.NzbUtils;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
@@ -27,7 +26,6 @@ import java.util.List;
  * try (NzbStreamerClient client = NzbStreamerClient.forServer(UsenetServerConfig.builder()
  *         .host("news.example.com").port(563).username("user").password("secret").build())) {
  *     Nzb nzb = client.parse(nzbXml);
- *     client.resolveSizes(nzb.getFiles());
  *     for (VirtualFile file : client.buildVirtualFiles(nzb)) {
  *         try (VirtualFileStream stream = client.openStream(file)) {
  *             // read the file
@@ -39,7 +37,7 @@ import java.util.List;
 public final class NzbStreamerClient implements AutoCloseable {
 
     private final UsenetConnectionPool pool;
-    private final JaxbNzbParser parser = new JaxbNzbParser();
+    private final SaxNzbParser parser = new SaxNzbParser();
     private final NzbFileSizeResolver sizeResolver;
     private final VirtualFileStreamFactory streamFactory;
     private final TikaNzbFileTransformer transformer;
@@ -62,18 +60,23 @@ public final class NzbStreamerClient implements AutoCloseable {
     }
 
     /**
-     * Gives each post its true size by reading the first article of each post. An NZB's own
-     * {@code bytes} attributes give the size of the yEnc-encoded article, not the decoded file, so
-     * a caller that needs to seek in a post calls this first.
+     * Reads the headers of every post and builds the files of the NZB, RAR-aware.
+     *
+     * <p>A repair/metadata post (PAR2, SFV, NFO, ...) never becomes a file, so its size is never
+     * resolved either. A post whose true size cannot be resolved does not become a file: a caller
+     * cannot seek in a file with a wrong size, so it is left out. Every other post in the NZB is
+     * still built normally.</p>
      */
-    public void resolveSizes(List<NzbFile> files)
-            throws IOException, InterruptedException, UsenetException {
-        sizeResolver.resolve(files);
-    }
-
-    /** Reads the headers of every post and builds the files of the NZB, RAR-aware. */
     public List<VirtualFile> buildVirtualFiles(Nzb nzb) {
-        return transformer.transform(nzb);
+        List<NzbFile> candidates = nzb.getFiles().stream()
+                .filter(file -> !NzbUtils.isRepairOrMetadataFile(file.getSubject()))
+                .toList();
+        List<NzbFile> sized = sizeResolver.resolve(candidates);
+
+        Nzb resolvedNzb = new Nzb();
+        resolvedNzb.setHead(nzb.getHead());
+        resolvedNzb.setFiles(sized);
+        return transformer.transform(resolvedNzb);
     }
 
     /** A stream for reading a file in sequence, prefetching whole segments ahead of the reader. */
