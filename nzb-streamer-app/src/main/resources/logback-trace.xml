@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Traces for the examples. It shows the time of each step of a download.
+
+  Use it with this option of the JVM:
+      -Dlogback.configurationFile=logback-trace.xml
+
+  Spring Boot does not read this file. It reads logback-spring.xml or logback.xml. For the
+  application, put logging.level.org.nzbstreamer=DEBUG in application-local.properties.
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{40} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- The times of the connection, of the transfer and of the waits. -->
+    <logger name="org.nzbstreamer.workers.DownloadSegmentsWorker" level="DEBUG"/>
+    <logger name="org.nzbstreamer.streams.VirtualFileStream" level="DEBUG"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>
