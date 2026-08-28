@@ -86,13 +86,14 @@ public class MultiPartDecoder extends AbstractYencDecoder implements YencDecoder
      * <p>The last chunk it puts can hold fewer than {@code bufferSize} bytes: the part, or the
      * {@code trim} window, can end before one fills.</p>
      *
-     * @return the total number of bytes put on the queue, for the caller's logs
+     * @return the whole part, not just the {@code [skip, skip+trim)} window given to the queue --
+     *         so a caller can cache the complete segment, reusable for any other window of it
      */
-    public int decode(Reader reader, BlockingQueue<byte[]> bufferQueue, int bufferSize, int skip,
+    public byte[] decode(Reader reader, BlockingQueue<byte[]> bufferQueue, int bufferSize, int skip,
                       int trim) throws IOException, InterruptedException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        OutputStream output = new WindowOutputStream(buffer, skip, trim);
-        int total = 0;
+        ByteArrayOutputStream full = new ByteArrayOutputStream();
+        OutputStream output = new WindowOutputStream(buffer, full, skip, trim);
         try (BufferedReader bufferedReader = new BufferedReader(reader)) {
             var crc = new CRC32();
             var inYencData = false;
@@ -105,16 +106,14 @@ public class MultiPartDecoder extends AbstractYencDecoder implements YencDecoder
                         var trailer = YencTrailer.parse(s);
 //                        validatePart(crc.getValue(), trailer); //TODO fix validation failing for nfo files
                         if (buffer.size() > 0) {
-                            total += buffer.size();
                             bufferQueue.put(buffer.toByteArray());
                         }
-                        return total;
+                        return full.toByteArray();
                     }
                     default -> {
                         if (inYencData) {
                             decodeLine(line, crc, output);
                             if (buffer.size() >= bufferSize) {
-                                total += buffer.size();
                                 bufferQueue.put(buffer.toByteArray());
                                 buffer.reset();
                             }
@@ -124,29 +123,36 @@ public class MultiPartDecoder extends AbstractYencDecoder implements YencDecoder
             }
         }
         if (buffer.size() > 0) {
-            total += buffer.size();
             bufferQueue.put(buffer.toByteArray());
         }
-        return total;
+        return full.toByteArray();
     }
 
     /**
-     * Discards the first {@code skip} bytes written to it, writes the {@code trim} bytes after
-     * those to {@code delegate}, and discards everything past that window.
+     * Writes every byte to {@code full}, and only the {@code [skip, skip+trim)} window of them to
+     * {@code delegate}.
+     *
+     * <p>{@code full} never resets, unlike {@code delegate}: it is the whole part, for a caller
+     * that wants the complete segment as one array once the decode is done -- to cache it, for
+     * instance -- alongside the windowed chunks that {@code delegate} already sent to the queue as
+     * they were ready.</p>
      */
     private static final class WindowOutputStream extends OutputStream {
         private final OutputStream delegate;
+        private final OutputStream full;
         private int skip;
         private int trim;
 
-        WindowOutputStream(OutputStream delegate, int skip, int trim) {
+        WindowOutputStream(OutputStream delegate, OutputStream full, int skip, int trim) {
             this.delegate = delegate;
+            this.full = full;
             this.skip = skip;
             this.trim = trim;
         }
 
         @Override
         public void write(int b) throws IOException {
+            full.write(b);
             if (skip > 0) {
                 skip--;
                 return;

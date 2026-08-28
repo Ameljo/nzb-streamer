@@ -8,7 +8,6 @@ import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.service.NzbProcessingService;
 import org.nzbstreamer.streams.VirtualFileStream;
-import org.nzbstreamer.utils.NzbUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -283,11 +282,6 @@ public class NzbController {
         Map<String, Object> response = new HashMap<>();
         try {
             Nzb nzb = client.parse(inputStream);
-            // A post of an nfo file gets no size: it holds one small article, and a connection for
-            // it costs more than the size that it gives. See NzbFileSizeResolver.
-            client.resolveSizes(nzb.getFiles().stream()
-                    .filter(f -> !NzbUtils.sanitizeFileName(f.getSubject()).contains(".nfo"))
-                    .toList());
             List<VirtualFile> files = client.buildVirtualFiles(nzb);
 
             File downloadsDir = new File("downloads");

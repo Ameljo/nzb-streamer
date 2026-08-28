@@ -1,20 +1,12 @@
 package org.nzbstreamer.model;
 
-import jakarta.xml.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(name = "", propOrder = {
-    "head",
-    "files"
-})
-@XmlRootElement(name = "nzb")
 public class Nzb {
 
     protected Head head;
 
-    @XmlElement(name = "file")
     protected List<NzbFile> files;
 
     public Nzb() {

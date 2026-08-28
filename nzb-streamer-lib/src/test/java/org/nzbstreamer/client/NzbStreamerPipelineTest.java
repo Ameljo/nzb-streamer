@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.nzbstreamer.exceptions.NzbParseException;
 import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.VirtualFile;
-import org.nzbstreamer.parser.JaxbNzbParser;
+import org.nzbstreamer.parser.SaxNzbParser;
 import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.streams.VirtualFileStream;
 import org.nzbstreamer.streams.VirtualFileStreamFactory;
@@ -60,10 +60,12 @@ class NzbStreamerPipelineTest {
         }
 
         @Override
-        public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
+        public byte[] fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
                            int bufferSize, int skip, int trim) throws InterruptedException {
             int end = Math.min(skip + trim, JPEG_BYTES.length);
-            buffer.put(skip < end ? Arrays.copyOfRange(JPEG_BYTES, skip, end) : new byte[0]);
+            byte[] used = skip < end ? Arrays.copyOfRange(JPEG_BYTES, skip, end) : new byte[0];
+            buffer.put(used);
+            return used;
         }
     }
 
@@ -74,7 +76,7 @@ class NzbStreamerPipelineTest {
         VirtualFileStreamFactory streamFactory = new VirtualFileStreamFactory(fetcher);
         TikaNzbFileTransformer transformer = new TikaNzbFileTransformer(streamFactory);
 
-        Nzb nzb = new JaxbNzbParser().parse(
+        Nzb nzb = new SaxNzbParser().parse(
                 new ByteArrayInputStream(NZB_XML.getBytes(StandardCharsets.ISO_8859_1)));
         assertEquals(1, nzb.getFiles().size(), "the NZB has one post");
         assertEquals(JPEG_BYTES.length, nzb.getFile(0).getSize(),

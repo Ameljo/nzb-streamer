@@ -3,10 +3,6 @@ package org.nzbstreamer.model;
 import java.util.List;
 import java.util.ArrayList;
 
-import jakarta.xml.bind.annotation.*;
-
-@XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(name = "", propOrder = {"meta"})
 public class Head {
 
     protected List<Meta> meta;

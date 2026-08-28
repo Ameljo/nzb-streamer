@@ -12,6 +12,7 @@ import org.nzbstreamer.utils.NzbUtils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -49,45 +50,50 @@ public class NzbFileSizeResolver {
     }
 
     /**
-     * Gives the sizes of several posts, a bounded number at a time.
-     *
-     * <p>Each post costs one connection: the operation reads the first lines of an article and
-     * stops there, thus the connection cannot take another command and the pool closes it. A
-     * caller that opens too many of those in a short burst risks a news server refusing it, so
-     * this bounds how many run at the same time instead of opening them all at once.</p>
+     * Gives each post its true size, a bounded number at a time, and gives back only the posts
+     * that could be read. A post whose article is missing or unusable does not stop the others,
+     * and it does not become a file with a guessed size either: a wrong size breaks a seek in
+     * that file for whatever plays it, so the post is left out instead.
      */
-    public void resolve(List<NzbFile> files)
-            throws IOException, InterruptedException, UsenetException {
+    public List<NzbFile> resolve(List<NzbFile> files) {
         if (files.isEmpty()) {
-            return;
+            return List.of();
         }
         ExecutorService executor = Executors.newFixedThreadPool(
                 Math.min(PARALLEL_POSTS, files.size()));
-        List<Future<?>> tasks = files.stream()
-                .<Future<?>>map(file -> executor.submit(() -> {
-                    resolve(file);
-                    return null;
-                }))
+        List<Future<NzbFile>> tasks = files.stream()
+                .map(file -> executor.submit(() -> resolveOrDrop(file)))
                 .toList();
         try {
-            for (Future<?> task : tasks) {
-                task.get();
+            List<NzbFile> resolved = new ArrayList<>();
+            for (Future<NzbFile> task : tasks) {
+                NzbFile file = task.get();
+                if (file != null) {
+                    resolved.add(file);
+                }
             }
-        } catch (ExecutionException e) {
+            return resolved;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             tasks.forEach(task -> task.cancel(true));
-            Throwable cause = e.getCause();
-            if (cause instanceof IOException io) {
-                throw io;
-            }
-            if (cause instanceof UsenetException ue) {
-                throw ue;
-            }
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new IOException("Cannot resolve sizes", cause);
+            throw new RuntimeException("Interrupted while resolving sizes", e);
+        } catch (ExecutionException e) {
+            // resolveOrDrop() catches everything itself; a task should never fail here.
+            throw new IllegalStateException("Unexpected failure while resolving sizes", e.getCause());
         } finally {
             executor.shutdown();
+        }
+    }
+
+    /** Resolves one post's true size, or returns null when the post cannot be read. */
+    private NzbFile resolveOrDrop(NzbFile file) {
+        try {
+            resolve(file);
+            return file;
+        } catch (Exception e) {
+            log.warn("{}: could not resolve the true size, thus it stays out with no download: {}",
+                    NzbUtils.sanitizeFileName(file.getSubject()), e.toString());
+            return null;
         }
     }
 

@@ -47,4 +47,8 @@ public class VirtualFileStreamFactory {
     public VirtualFileStream openRange(VirtualFile file) {
         return new VirtualFileStream(file, new OnDemandSource(file, fetcher));
     }
+
+    public VirtualFileStream openDynamic(VirtualFile file) {
+        return new VirtualFileStream(file, new DynamicSource(file, fetcher));
+    }
 }

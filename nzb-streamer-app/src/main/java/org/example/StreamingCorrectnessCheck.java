@@ -1,6 +1,7 @@
 package org.example;
 
 import org.nzbstreamer.client.NzbStreamerClient;
+import org.nzbstreamer.entity.VirtualFileEntity;
 import org.nzbstreamer.entity.VirtualFileMapper;
 import org.nzbstreamer.model.Segment;
 import org.nzbstreamer.model.VirtualFile;
@@ -46,7 +47,7 @@ public class StreamingCorrectnessCheck {
     private static final int SAMPLE_LENGTH = 64;
 
     public static void main(String[] args) throws Exception {
-        UUID id = UUID.fromString(args.length > 0 ? args[0] : "7f062ca4-695d-44b2-a0d2-16f5a285d542");
+        UUID id = UUID.fromString(args.length > 0 ? args[0] : "604e96f7-0636-4e5f-91b9-b15d3881865d");
         int repeats = args.length > 1 ? Integer.parseInt(args[1]) : 3;
 
         ConfigurableApplicationContext context = new SpringApplicationBuilder(Main.class)
@@ -55,9 +56,9 @@ public class StreamingCorrectnessCheck {
         try {
             VirtualFileRepository files = context.getBean(VirtualFileRepository.class);
             NzbStreamerClient client = context.getBean(NzbStreamerClient.class);
-
-            VirtualFile file = VirtualFileMapper.toLib(files.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("no file " + id)));
+            VirtualFileEntity entity = files.findById(id).orElseThrow(() -> new IllegalArgumentException("no file " + id));
+            entity.getChunks();
+            VirtualFile file = VirtualFileMapper.toLib(entity);
             File reference = new File("downloads", file.filename());
             if (!reference.isFile()) {
                 throw new IllegalStateException("no local reference file at "
@@ -84,7 +85,7 @@ public class StreamingCorrectnessCheck {
                 System.out.printf("--- attempt %d/%d ---%n", attempt, repeats);
                 // A fresh load of the entity, the same way a new HTTP request loads it.
                 VirtualFile attemptFile = VirtualFileMapper.toLib(files.findById(id).orElseThrow());
-                try (VirtualFileStream stream = client.openStream(attemptFile)) {
+                try (VirtualFileStream stream = client.openDynamic(attemptFile)) {
                     for (long position : seeks) {
                         checkSeek(stream, reference, position);
                     }

@@ -1,7 +1,5 @@
 package org.nzbstreamer.model;
 
-import jakarta.xml.bind.annotation.*;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,26 +9,16 @@ import java.util.List;
  * <p>Groups and segments live directly on this class: groups as a plain list, segments as a plain
  * list read from and written to the {@code <segments>} element (see {@link #segments}).</p>
  */
-@XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(name = "", propOrder = {"groups", "segments"})
 public class NzbFile {
 
-    @XmlElementWrapper(name = "groups")
-    @XmlElement(name = "group")
     protected List<String> groups = new ArrayList<>();
 
-    @XmlElementWrapper(name = "segments", required = true)
-    @XmlElement(name = "segment")
     protected List<Segment> segments = new ArrayList<>();
 
-    @XmlAttribute(name = "poster")
     protected String poster;
-    @XmlAttribute(name = "date")
     protected Long date;
-    @XmlAttribute(name = "subject")
     protected String subject;
 
-    @XmlTransient
     private long size;
 
     public NzbFile() {

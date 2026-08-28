@@ -51,10 +51,10 @@ class StreamingSourceRealDecodeTest {
     private static final class RealDecodeSegments implements SegmentFetcher {
 
         @Override
-        public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
+        public byte[] fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
                           int bufferSize, int skip, int trim) throws IOException, InterruptedException {
             byte[] raw = VirtualFileTestData.segmentBytes(messageId);
-            new MultiPartDecoder().decode(new StringReader(article(raw)), buffer, bufferSize, skip,
+            return new MultiPartDecoder().decode(new StringReader(article(raw)), buffer, bufferSize, skip,
                     trim);
         }
     }
