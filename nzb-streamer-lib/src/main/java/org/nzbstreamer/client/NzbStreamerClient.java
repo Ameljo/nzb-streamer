@@ -5,8 +5,10 @@ import org.nzbstreamer.model.Nzb;
 import org.nzbstreamer.model.NzbFile;
 import org.nzbstreamer.model.VirtualFile;
 import org.nzbstreamer.parser.SaxNzbParser;
+import org.nzbstreamer.service.CachingSegmentFetcher;
 import org.nzbstreamer.service.NzbFileSizeResolver;
 import org.nzbstreamer.service.PooledSegmentFetcher;
+import org.nzbstreamer.service.SegmentCache;
 import org.nzbstreamer.service.SegmentFetcher;
 import org.nzbstreamer.service.UsenetConnectionPool;
 import org.nzbstreamer.streams.VirtualFileStream;
@@ -44,7 +46,8 @@ public final class NzbStreamerClient implements AutoCloseable {
 
     private NzbStreamerClient(UsenetConnectionPool pool) {
         this.pool = pool;
-        SegmentFetcher fetcher = new PooledSegmentFetcher(pool);
+        SegmentFetcher fetcher = new CachingSegmentFetcher(new PooledSegmentFetcher(pool),
+                new SegmentCache(200L * 1024 * 1024));
         this.sizeResolver = new NzbFileSizeResolver(pool);
         this.streamFactory = new VirtualFileStreamFactory(fetcher);
         this.transformer = new TikaNzbFileTransformer(streamFactory);
@@ -87,6 +90,10 @@ public final class NzbStreamerClient implements AutoCloseable {
     /** A stream for reading a file in sequence, prefetching decoded chunks ahead of the reader. */
     public VirtualFileStream openStream(VirtualFile file) {
         return streamFactory.openStream(file);
+    }
+
+    public VirtualFileStream openDynamic(VirtualFile file) {
+        return streamFactory.openDynamic(file);
     }
 
     /** Same as {@link #openStream(VirtualFile)}, with the given chunk size instead of the default. */

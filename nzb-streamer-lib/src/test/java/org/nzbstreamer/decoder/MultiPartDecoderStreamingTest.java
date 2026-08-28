@@ -11,7 +11,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests {@link MultiPartDecoder#decode(java.io.Reader, BlockingQueue, int, int, int)} against real
@@ -63,10 +62,10 @@ class MultiPartDecoderStreamingTest {
         byte[] data = testBytes(300);
         BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>();
 
-        int total = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, 0,
+        byte[] result = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, 0,
                 data.length);
 
-        assertEquals(data.length, total);
+        assertArrayEquals(data, result);
         assertArrayEquals(data, drain(queue));
     }
 
@@ -78,11 +77,11 @@ class MultiPartDecoderStreamingTest {
         int skip = 50;
         int trim = 100;
 
-        int total = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, skip,
+        byte[] result = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, skip,
                 trim);
 
         byte[] expected = Arrays.copyOfRange(data, skip, skip + trim);
-        assertEquals(trim, total);
+        assertArrayEquals(data, result);
         assertArrayEquals(expected, drain(queue));
     }
 
@@ -93,11 +92,11 @@ class MultiPartDecoderStreamingTest {
         BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>();
         int trim = 200;
 
-        int total = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, 0,
+        byte[] result = new MultiPartDecoder().decode(new StringReader(article(data)), queue, 64, 0,
                 trim);
 
         byte[] expected = Arrays.copyOfRange(data, 0, trim);
-        assertEquals(trim, total);
+        assertArrayEquals(data, result);
         assertArrayEquals(expected, drain(queue));
     }
 }

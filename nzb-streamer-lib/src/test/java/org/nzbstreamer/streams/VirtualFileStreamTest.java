@@ -111,7 +111,7 @@ class VirtualFileStreamTest {
         private static final int TEST_CHUNK_SIZE = 3;
 
         @Override
-        public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
+        public byte[] fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
                           int bufferSize, int skip, int trim) throws InterruptedException {
             byte[] bytes = VirtualFileTestData.segmentBytes(messageId);
             int end = Math.min(skip + trim, bytes.length);
@@ -122,6 +122,7 @@ class VirtualFileStreamTest {
                 int chunkEnd = Math.min(i + TEST_CHUNK_SIZE, used.length);
                 buffer.put(Arrays.copyOfRange(used, i, chunkEnd));
             }
+            return used;
         }
     }
 

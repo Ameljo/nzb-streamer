@@ -49,15 +49,26 @@ public class NNTPClientFactory {
         // true means the connection above -- welcome banner included -- was actually encrypted;
         // there is no silent fallback to plain text in this code path.
         log.debug("connected to {}:{} ({})", server, port, config.tls() ? "TLS" : "plain text");
-        boolean authenticated = false;
         try {
-            authenticated = client.authenticate(username, password);
-        } catch (IOException e) {
-            throw new UsenetAuthenticationException(username, client.getReplyCode(), client.getReplyString());
-        }
-
-        if (!authenticated) {
-            throw new UsenetAuthenticationException(username, client.getReplyCode(), client.getReplyString());
+            boolean authenticated;
+            try {
+                authenticated = client.authenticate(username, password);
+            } catch (IOException e) {
+                throw new UsenetAuthenticationException(username, client.getReplyCode(), client.getReplyString());
+            }
+            if (!authenticated) {
+                throw new UsenetAuthenticationException(username, client.getReplyCode(), client.getReplyString());
+            }
+        } catch (UsenetAuthenticationException e) {
+            // The socket connected but the server refused to authenticate it -- close it here, or
+            // it leaks: create() never returns a PooledClient for the pool to release or discard.
+            try {
+                client.disconnect();
+            } catch (IOException closeError) {
+                log.debug("cannot close a connection that failed to authenticate: {}",
+                        closeError.getMessage());
+            }
+            throw e;
         }
 
         return client;

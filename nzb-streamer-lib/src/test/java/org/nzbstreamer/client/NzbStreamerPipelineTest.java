@@ -60,10 +60,12 @@ class NzbStreamerPipelineTest {
         }
 
         @Override
-        public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
+        public byte[] fetch(String messageId, String group, BlockingQueue<byte[]> buffer,
                            int bufferSize, int skip, int trim) throws InterruptedException {
             int end = Math.min(skip + trim, JPEG_BYTES.length);
-            buffer.put(skip < end ? Arrays.copyOfRange(JPEG_BYTES, skip, end) : new byte[0]);
+            byte[] used = skip < end ? Arrays.copyOfRange(JPEG_BYTES, skip, end) : new byte[0];
+            buffer.put(used);
+            return used;
         }
     }
 

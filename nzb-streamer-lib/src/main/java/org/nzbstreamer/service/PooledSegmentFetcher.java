@@ -58,18 +58,18 @@ public class PooledSegmentFetcher implements SegmentFetcher {
         }
         pool.release(pooled);
 
-        log.debug("segment {}: {} bytes in {} ms = transfer {} ms", messageId,
-                bytes.length, (System.nanoTime() - startedAt) / 1_000_000,
-                (System.nanoTime() - transferStart) / 1_000_000);
+//        log.debug("segment {}: {} bytes in {} ms = transfer {} ms", messageId,
+//                bytes.length, (System.nanoTime() - startedAt) / 1_000_000,
+//                (System.nanoTime() - transferStart) / 1_000_000);
         return bytes;
     }
 
     @Override
-    public void fetch(String messageId, String group, BlockingQueue<byte[]> buffer, int bufferSize, int skip, int trim) throws IOException, UsenetException, InterruptedException {
+    public byte[] fetch(String messageId, String group, BlockingQueue<byte[]> buffer, int bufferSize, int skip, int trim) throws IOException, UsenetException, InterruptedException {
         long startedAt = System.nanoTime();
         PooledClient pooled = pool.borrow(group);
         long transferStart = System.nanoTime();
-        int bytes;
+        byte[] bytes;
 
         // retrieveArticle is the name of the command of NNTP. A segment is one article.
         // The reader must read all the segment: its close operation reads the bytes that stay,
@@ -86,8 +86,9 @@ public class PooledSegmentFetcher implements SegmentFetcher {
         pool.release(pooled);
 
 //        log.debug("segment {}: {} bytes in {} ms = transfer {} ms", messageId,
-//                bytes, (System.nanoTime() - startedAt) / 1_000_000,
+//                bytes.length, (System.nanoTime() - startedAt) / 1_000_000,
 //                (System.nanoTime() - transferStart) / 1_000_000);
+        return bytes;
     }
 
     /**
